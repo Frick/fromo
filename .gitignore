@@ -1,0 +1,8 @@
+.build/
+.swiftpm/
+*.app
+*.zip
+.DS_Store
+.pii-patterns
+.xdg-config/
+.xdg-state/
