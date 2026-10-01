@@ -1,0 +1,73 @@
+name: CI
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: linux-swift-${{ hashFiles('Package.resolved') }}
+      - name: Build and test
+        run: |
+          swift build
+          swift test
+          .build/debug/fromo --version
+      - name: Shellcheck and SketchyBar fixtures (from M2)
+        run: |
+          if [ -f contrib/sketchybar/fromo.sh ]; then
+            apt-get update && apt-get install -y shellcheck jq
+            shellcheck contrib/sketchybar/fromo.sh
+            sh scripts/test-sketchybar.sh
+          fi
+
+  macos:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: macos-swift-${{ hashFiles('Package.resolved') }}
+      - name: Build, test and bundle
+        run: |
+          swift build -c release
+          swift test
+          sh scripts/bundle.sh
+          codesign --verify --deep --strict Fromo.app
+          Fromo.app/Contents/Helpers/fromo --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fromo-macos
+          path: Fromo-*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Fromo-macos
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cp "Fromo-${GITHUB_REF_NAME}.zip" Fromo.zip
+          gh release create "$GITHUB_REF_NAME" "Fromo-${GITHUB_REF_NAME}.zip" Fromo.zip --title "$GITHUB_REF_NAME" --generate-notes
