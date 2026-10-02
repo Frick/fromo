@@ -11,6 +11,7 @@ private func temporaryPaths() throws -> Paths {
 
 @Test func stateRoundTripAndCorruptRecovery() throws {
     let paths = try temporaryPaths()
+    defer { try? FileManager.default.removeItem(at: paths.configDirectory.deletingLastPathComponent()) }
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(secondsFromGMT: 0)!
     let store = StateStore(url: paths.stateFile)
@@ -30,6 +31,7 @@ private func temporaryPaths() throws -> Paths {
 
 @Test func csvQuotesAndUsesStartDate() throws {
     let paths = try temporaryPaths()
+    defer { try? FileManager.default.removeItem(at: paths.configDirectory.deletingLastPathComponent()) }
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(secondsFromGMT: 0)!
     let store = LogStore(directory: paths.logDirectory, calendar: calendar)
@@ -46,6 +48,7 @@ private func temporaryPaths() throws -> Paths {
 
 @Test func xdgResolutionAndSocketPathLimit() throws {
     let paths = try temporaryPaths()
+    defer { try? FileManager.default.removeItem(at: paths.configDirectory.deletingLastPathComponent()) }
     #expect(paths.configFile.path.contains("/config/fromo/config.toml"))
     #expect(paths.stateFile.path.contains("/state/fromo/state.json"))
     let tooLong = Paths(environment: ["XDG_STATE_HOME": "/tmp/" + String(repeating: "x", count: 100)], home: "/tmp")
@@ -54,6 +57,7 @@ private func temporaryPaths() throws -> Paths {
 
 @Test func configStoreHandlesMissingAndPartialConfig() throws {
     let paths = try temporaryPaths()
+    defer { try? FileManager.default.removeItem(at: paths.configDirectory.deletingLastPathComponent()) }
     let store = ConfigStore(url: paths.configFile)
     #expect(try store.read().config.timer.workMinutes == 25)
     try store.write(Config())

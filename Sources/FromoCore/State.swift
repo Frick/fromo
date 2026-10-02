@@ -48,6 +48,13 @@ public struct LunchState: Codable, Equatable, Sendable {
     public var returnPhase: Phase
     public var returnRemaining: Int?
     public var returnPhaseEnteredAt: Int
+
+    public init(endsAt: Int, returnPhase: Phase, returnRemaining: Int?, returnPhaseEnteredAt: Int) {
+        self.endsAt = endsAt
+        self.returnPhase = returnPhase
+        self.returnRemaining = returnRemaining
+        self.returnPhaseEnteredAt = returnPhaseEnteredAt
+    }
 }
 
 public struct NagCursor: Codable, Equatable, Sendable {
