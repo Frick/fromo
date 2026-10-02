@@ -135,27 +135,8 @@ public struct LogStore {
         let url = directory.appendingPathComponent("\(day).csv")
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         let text = try String(contentsOf: url, encoding: .utf8)
-        var records: [[String]] = []
-        var fields: [String] = []
-        var field = ""
-        var quoted = false
-        let characters = Array(text)
-        var index = 0
-        while index < characters.count {
-            let character = characters[index]
-            if character == "\"" {
-                if quoted && index + 1 < characters.count && characters[index + 1] == "\"" {
-                    field.append("\""); index += 1
-                } else { quoted.toggle() }
-            } else if character == "," && !quoted {
-                fields.append(field); field = ""
-            } else if character == "\n" && !quoted {
-                fields.append(field.trimmingCharacters(in: .newlines)); field = ""
-                records.append(fields); fields = []
-            } else { field.append(character) }
-            index += 1
-        }
-        if !field.isEmpty || !fields.isEmpty { fields.append(field); records.append(fields) }
+        let records = CSV.records(text)
+        guard records.first == ["start", "end", "kind", "planned_seconds", "outcome", "suggested", "actual"] else { return [[]] }
         return Array(records.dropFirst())
     }
 }
