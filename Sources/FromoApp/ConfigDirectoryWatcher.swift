@@ -24,7 +24,7 @@ final class ConfigDirectoryWatcher: @unchecked Sendable {
         source.setEventHandler { [weak self] in
             guard let self, !self.stopped else { return }
             self.pending?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.changed() }
+            let work = DispatchWorkItem(qos: .unspecified, flags: []) { [weak self] in self?.changed() }
             self.pending = work
             self.queue.asyncAfter(deadline: .now() + .milliseconds(250), execute: work)
         }

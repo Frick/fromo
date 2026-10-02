@@ -44,8 +44,8 @@ final class SettingsModel: ObservableObject {
         draft.edit(candidate, nowMilliseconds: milliseconds)
         saveError = nil
         guard draft.validationError == nil else { return }
-        let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated { self?.persist(force: false) }
+        let work = DispatchWorkItem(qos: .unspecified, flags: []) { [weak self] in
+            MainActor.assumeIsolated { _ = self?.persist(force: false) }
         }
         pendingSave = work
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(500), execute: work)
