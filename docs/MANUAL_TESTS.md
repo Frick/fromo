@@ -93,6 +93,8 @@ notifications. Keep the original settings values so they can be restored afterwa
 
 # M6 — Stats (`v0.6.0`)
 
+The owner verified the final stats checks successfully. M0–M6 are complete.
+
 Synthetic aggregation, CSV quoting, malformed rows, date ranges, CLI usage/exit codes,
 JSON output and operation without an engine are verified by the agent on Linux and
 macOS CI. This final check is against the owner's local data; logs stay on the Mac.
