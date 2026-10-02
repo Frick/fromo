@@ -1,3 +1,3 @@
 public enum FromoVersion {
-    public static let current = "0.3.2"
+    public static let current = "0.4.0"
 }
