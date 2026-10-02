@@ -68,8 +68,10 @@ public struct IPCResponse: Codable, Sendable {
     public var state: State?
     public var code: String?
     public var error: String?
-    public init(ok: Bool, state: State? = nil, code: String? = nil, error: String? = nil) {
+    public var debug: EngineDebug?
+    public init(ok: Bool, state: State? = nil, code: String? = nil, error: String? = nil, debug: EngineDebug? = nil) {
         self.ok = ok; self.state = state; self.code = code; self.error = error
+        self.debug = debug
     }
 }
 

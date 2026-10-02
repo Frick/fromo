@@ -45,20 +45,24 @@ public enum Effect: Equatable, Sendable {
     case clearNotifications
     case setLaunchAtLogin(Bool)
     case configError(String), configReloaded, logDiagnostic(String), clearConfigError, openConfig
+    case nag(String)
 }
 
 public struct Engine: Sendable {
     public private(set) var state: State
     private var meetingQuietSince: Int? = nil
+    private var lastSuppressedAt: Int? = nil
 
     public init(now: Int, config: Config, calendar: Calendar, pid: Int = 0) {
         state = State(now: now, config: config, calendar: calendar, pid: pid)
+        lastSuppressedAt = now
     }
 
     public init(state: State) { self.state = state }
 
     public mutating func restore(env: Environment, pid: Int? = nil, recovered: Bool = false) -> [Effect] {
         var effects: [Effect] = []
+        lastSuppressedAt = env.now
         let original = state
         if state.phase == .stopped {
             state.phase = state.stoppedPhase ?? .ready
@@ -84,6 +88,7 @@ public struct Engine: Sendable {
     public mutating func tick(env: Environment) -> [Effect] {
         let previousPhase = state.phase
         var effects: [Effect] = []
+        if lastSuppressedAt == nil || state.inMeeting { lastSuppressedAt = env.now }
         let detected = (env.config.meetings.camera && env.cameraInUse)
             || (env.config.meetings.microphone && env.micInUse)
         if detected {
@@ -133,7 +138,25 @@ public struct Engine: Sendable {
         default: break
         }
         if state.phase != previousPhase { effects.insert(.clearNotifications, at: 0) }
+        let nag = NagPolicy.evaluate(state: state, env: env, lastSuppressedAt: lastSuppressedAt)
+        if nag.cooldownSuppressed { lastSuppressedAt = env.now }
+        if let message = nag.message {
+            state.lastNagAt = env.now
+            if state.phase == .ready { state.nagCursor.unused = (max(0, state.nagCursor.unused) % env.config.nags.unused.count + 1) % env.config.nags.unused.count }
+            else { state.nagCursor.waiting = (max(0, state.nagCursor.waiting) % env.config.nags.waiting.count + 1) % env.config.nags.waiting.count }
+            effects.append(.nag(message))
+            effects += sound("nag", config: env.config)
+            effects += changed(at: env.now)
+        }
         return effects
+    }
+
+    public func debug(env: Environment) -> EngineDebug {
+        let nag = NagPolicy.evaluate(state: state, env: env, lastSuppressedAt: lastSuppressedAt)
+        return EngineDebug(phase: state.phase, idleSeconds: env.idleSeconds, cameraInUse: env.cameraInUse,
+                           microphoneInUse: env.micInUse, inMeeting: state.inMeeting,
+                           inWorkHours: NagPolicy.inWorkHours(env: env), nagEligible: nag.eligible, nagDue: nag.due,
+                           nextNagAt: nag.nextNagAt, lastSuppressedAt: lastSuppressedAt, reasons: nag.reasons)
     }
 
     public mutating func handle(_ cmd: Command, env: Environment) throws -> [Effect] {
@@ -354,6 +377,7 @@ public struct Engine: Sendable {
         case "work_end": configured = config.sounds.workEnd
         case "break_end": configured = config.sounds.breakEnd
         case "lunch_end": configured = config.sounds.lunchEnd
+        case "nag": configured = config.sounds.nag
         default: return []
         }
         return configured.isEmpty ? [] : [.playSound(configured)]

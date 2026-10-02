@@ -20,13 +20,15 @@ func paths() -> Paths {
     return Paths(environment: environment, home: explicit ? "" : NSHomeDirectory())
 }
 
-func control(_ verb: String, args: IPCArguments? = nil) throws {
+@discardableResult
+func control(_ verb: String, args: IPCArguments? = nil) throws -> IPCResponse {
     let response: IPCResponse
     do { response = try IPCClient.request(IPCRequest(cmd: verb, args: args), path: paths().checkedSocketPath()) }
     catch { throw CLIFailure(message: String(describing: error), code: 2) }
     if !response.ok {
         throw CLIFailure(message: response.error ?? "Command failed.", code: response.code == "usage" ? 64 : 1)
     }
+    return response
 }
 
 @main
@@ -113,7 +115,13 @@ struct Status: ParsableCommand {
     @Flag(help: "Print raw state JSON.") var json = false
     @Flag(help: "Ask the engine for probe and nag details.") var debug = false
     mutating func run() throws {
-        if debug { try control("debug"); return }
+        if debug {
+            let response = try control("debug")
+            guard let report = response.debug else { throw CLIFailure(message: "The engine did not return debug details.", code: 1) }
+            if json { FileHandle.standardOutput.write(try IPCCodec.encode(report)) }
+            else { print(report.summary) }
+            return
+        }
         let store = StateStore(url: paths().stateFile)
         guard let state = try? store.read(), state.phase != .stopped, processIsRunning(state.pid) else {
             print(json ? "{\"running\":false}" : "not running")
@@ -176,6 +184,7 @@ struct Headless: ParsableCommand {
             let event: [String: String]
             switch effect {
             case .notify(let kind): event = ["effect": "notify", "kind": kind]
+            case .nag(let message): event = ["effect": "notify", "kind": "nag", "title": message]
             case .playSound(let name): event = ["effect": "play_sound", "name": name]
             case .showAnswerPanel: event = ["effect": "show_answer_panel"]
             case .hideAnswerPanel: event = ["effect": "hide_answer_panel"]
@@ -186,13 +195,16 @@ struct Headless: ParsableCommand {
             if let data = try? IPCCodec.encode(event) { FileHandle.standardOutput.write(data) }
         }
         let stop = StopFlag()
+        let signalsReady = DispatchSemaphore(value: 0)
         signal(SIGINT, SIG_IGN); signal(SIGTERM, SIG_IGN)
         let signals = [SIGINT, SIGTERM].map { number in
             let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
             source.setEventHandler { stop.set() }
+            source.setRegistrationHandler { signalsReady.signal() }
             source.resume()
             return source
         }
+        for _ in signals { signalsReady.wait() }
         defer { signals.forEach { $0.cancel() } }
         FileHandle.standardOutput.write(Data("{\"effect\":\"listening\"}\n".utf8))
         while !stop.value {

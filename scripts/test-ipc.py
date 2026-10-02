@@ -61,6 +61,7 @@ with tempfile.TemporaryDirectory(prefix="fromo-") as root:
     assert run(env, "status").strip() == "not running"
     assert json.loads(run(env, "status", "--json")) == {"running": False}
     run(env, "start", code=2)
+    run(env, "status", "--debug", code=2)
     run(env, "answer", code=64)
     run(env, "answer", "--did", "Other", code=64)
     run(env, "extend", "-2", code=64)
@@ -75,6 +76,10 @@ with tempfile.TemporaryDirectory(prefix="fromo-") as root:
     process = launch(env)
     try:
         assert os.stat(socket_path).st_mode & 0o777 == 0o600
+        debug = json.loads(run(env, "status", "--debug", "--json"))
+        assert debug["phase"] == "ready" and debug["idle_seconds"] == 0
+        assert not debug["camera_in_use"] and not debug["microphone_in_use"]
+        assert "Nag eligible:" in run(env, "status", "--debug")
         before = state_path.read_bytes()
         run(env, "engine", "--headless", "--now", str(NOW), code=2)
         assert state_path.read_bytes() == before, "second instance wrote state"
