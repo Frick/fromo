@@ -41,6 +41,8 @@ public enum Effect: Equatable, Sendable {
     case notify(String)
     case playSound(String)
     case showAnswerPanel, hideAnswerPanel, showSettingsWindow, triggerSketchyBar
+    case clearNotifications
+    case setLaunchAtLogin(Bool)
 }
 
 public struct Engine: Sendable {
@@ -55,27 +57,30 @@ public struct Engine: Sendable {
 
     public mutating func restore(env: Environment, pid: Int? = nil, recovered: Bool = false) -> [Effect] {
         var effects: [Effect] = []
+        let original = state
         if state.phase == .stopped {
             state.phase = state.stoppedPhase ?? .ready
             state.stoppedPhase = nil
-            effects += changed(at: env.now)
         }
-        if let pid, pid != state.pid {
-            state.pid = pid
-            effects += changed(at: env.now)
-        }
+        state.rotation.short.reconcile(env.config.breaks.short)
+        state.rotation.long.reconcile(env.config.breaks.long)
+        state.dailyGoal = env.config.timer.dailyGoal
+        state.updateNextTask(config: env.config)
+        if let pid { state.pid = pid }
+        if state != original || recovered { effects += changed(at: env.now) }
         if recovered {
             effects.append(.notify("state_corrupt"))
-            if pid == nil { effects += changed(at: env.now) }
         }
         effects += tick(env: env)
         if state.phase == .breakDone && !state.inMeeting && !effects.contains(.showAnswerPanel) {
             effects.append(.showAnswerPanel)
         }
+        effects.append(.setLaunchAtLogin(env.config.general.launchAtLogin))
         return effects
     }
 
     public mutating func tick(env: Environment) -> [Effect] {
+        let previousPhase = state.phase
         var effects: [Effect] = []
         let detected = (env.config.meetings.camera && env.cameraInUse)
             || (env.config.meetings.microphone && env.micInUse)
@@ -125,12 +130,14 @@ public struct Engine: Sendable {
             effects += finishLunch(at: state.lunch!.endsAt, env: env, early: false)
         default: break
         }
+        if state.phase != previousPhase { effects.insert(.clearNotifications, at: 0) }
         return effects
     }
 
     public mutating func handle(_ cmd: Command, env: Environment) throws -> [Effect] {
         var candidate = self
-        let effects = try candidate.apply(cmd, env: env)
+        var effects = try candidate.apply(cmd, env: env)
+        if candidate.state.phase != state.phase { effects.insert(.clearNotifications, at: 0) }
         self = candidate
         return effects
     }
@@ -241,6 +248,7 @@ public struct Engine: Sendable {
             state.rotation.long.reconcile(config.breaks.long)
             state.dailyGoal = config.timer.dailyGoal
             state.updateNextTask(config: config)
+            effects.append(.setLaunchAtLogin(config.general.launchAtLogin))
         case .settings:
             return [.showSettingsWindow]
         case .stop:

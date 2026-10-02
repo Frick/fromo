@@ -7,6 +7,13 @@ Copy `fromo.sh` into the SketchyBar plugin directory, make it executable, then a
 sketchybar --add event fromo_update \
            --add item fromo right \
            --set fromo update_freq=1 script="$PLUGIN_DIR/fromo.sh" \
+               label.font="MesloLGL Nerd Font:Regular:15.0" \
+               icon.padding_left=6 icon.padding_right=6 \
+               label.padding_left=6 label.padding_right=6 \
+               icon.background.height=22 icon.background.corner_radius=5 \
+               icon.background.padding_left=4 icon.background.padding_right=4 \
+               label.background.height=22 label.background.corner_radius=5 \
+               label.background.padding_left=4 label.background.padding_right=4 \
            --subscribe fromo fromo_update mouse.clicked
 ```
 
@@ -15,8 +22,15 @@ It computes the countdown each second without querying the app. Left click runs
 `fromo next`; right click runs `fromo toggle`. The item hides when state is missing,
 invalid, stopped, or its PID is dead. During a meeting it shows time only.
 
-The colors and Material Design icons are variables at the top of the script.
-Adjust them and the font in the item configuration to match the owner's bar.
+The phase color fills the icon's background segment. Icons stay near-black and
+labels stay near-white on a dark background segment. The item snippet sets the
+connected segment geometry; existing matching item defaults can supply it instead.
+Colors and Material Design icons are variables at the top of the script.
 
-M2 ships the plugin and headless engine. The macOS app starts publishing timer
-state in M3; its current build still has the scaffold's Quit menu.
+The label explicitly uses a monospaced font, matching the clock item, so changing
+seconds do not move adjacent items. Countdown seconds are zero-padded. Keep this
+font setting in the item setup; the plugin leaves it alone so the owner can choose
+another monospaced face.
+
+The M3 macOS app publishes timer state and sends transition triggers. The hidden
+headless engine can also publish state in temporary XDG directories for development.

@@ -49,7 +49,9 @@ public struct StateStore {
             return (State(now: now, config: config, calendar: calendar), false)
         }
         do {
-            return (try read(), false)
+            let state = try read()
+            try state.validateForEngine()
+            return (state, false)
         } catch {
             let backup = url.deletingLastPathComponent().appendingPathComponent("state.json.corrupt-\(now)")
             try FileManager.default.moveItem(at: url, to: backup)

@@ -268,7 +268,7 @@ private func env(_ time: Int, _ config: Config = .init()) -> Environment {
     #expect(engine.state.pid == 123)
     #expect(effects.contains(.notify("state_corrupt")))
     #expect(effects.contains { if case .writeState(let state) = $0 { return state.pid == 123 }; return false })
-    #expect(engine.restore(env: env(1_002), pid: 123).isEmpty)
+    #expect(!engine.restore(env: env(1_002), pid: 123).contains(.notify("state_corrupt")))
 }
 
 @Test func longRotationIsIndependentOfShortRotation() throws {
