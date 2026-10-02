@@ -52,10 +52,19 @@ public struct Engine: Sendable {
 
     public init(state: State) { self.state = state }
 
-    public mutating func restore(env: Environment) -> [Effect] {
-        let effects = tick(env: env)
+    public mutating func restore(env: Environment, pid: Int? = nil, recovered: Bool = false) -> [Effect] {
+        var effects: [Effect] = []
+        if let pid, pid != state.pid {
+            state.pid = pid
+            effects += changed(at: env.now)
+        }
+        if recovered {
+            effects.append(.notify("state_corrupt"))
+            if pid == nil { effects += changed(at: env.now) }
+        }
+        effects += tick(env: env)
         if state.phase == .breakDone && !state.inMeeting && !effects.contains(.showAnswerPanel) {
-            return effects + [.showAnswerPanel]
+            effects.append(.showAnswerPanel)
         }
         return effects
     }

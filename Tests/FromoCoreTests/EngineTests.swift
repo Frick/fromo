@@ -223,6 +223,33 @@ private func env(_ time: Int, _ config: Config = .init()) -> Environment {
     }
 }
 
+@Test func restoreUpdatesPidAndReportsCorruptionOnce() {
+    var engine = Engine(now: 1_000, config: .init(), calendar: env(1_000).calendar)
+    let effects = engine.restore(env: env(1_001), pid: 123, recovered: true)
+    #expect(engine.state.pid == 123)
+    #expect(effects.contains(.notify("state_corrupt")))
+    #expect(effects.contains { if case .writeState(let state) = $0 { return state.pid == 123 }; return false })
+    #expect(engine.restore(env: env(1_002), pid: 123).isEmpty)
+}
+
+@Test func longRotationIsIndependentOfShortRotation() throws {
+    var config = Config()
+    config.timer.workMinutes = 1
+    config.timer.longBreakEvery = 1
+    config.breaks.short = ["S1", "S2"]
+    config.breaks.long = ["L1", "L2"]
+    var engine = Engine(now: 1_000, config: config, calendar: env(1_000, config).calendar)
+    _ = try engine.handle(.start, env: env(1_000, config))
+    _ = engine.tick(env: env(1_060, config))
+    _ = try engine.handle(.startBreak, env: env(1_061, config))
+    #expect(engine.state.task == "L1")
+    _ = try engine.handle(.endBreak, env: env(1_062, config))
+    _ = try engine.handle(.answer(.didSuggested, startNext: false), env: env(1_063, config))
+    #expect(engine.state.rotation.short.name == "S1")
+    #expect(engine.state.rotation.long.name == "L2")
+    #expect(engine.state.cycleCount == 0)
+}
+
 @Test func restartAndEndBreakEarlyPreserveLoggingRules() throws {
     var config = Config()
     config.timer.workMinutes = 1

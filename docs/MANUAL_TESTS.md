@@ -6,3 +6,10 @@
 4. Select `Quit Fromo`. Expected: the timer icon disappears and the app quits.
 5. Run `~/.local/bin/fromo --version`. Expected: it prints `0.0.1` and exits successfully.
 6. Once the `v0.0.1` release is published, run `sh scripts/install.sh` to verify the release-download path. Expected: it installs and opens the same app; the CLI still prints `0.0.1`.
+
+# M1 — Core (`v0.1.0`)
+
+No Mac interaction is required for this milestone; the app is still the M0 stub.
+
+1. Open the `v0.1.0` CI run. Expected: both `linux` and `macos` jobs pass, including `swift test` for config, state transitions, rotation, persistence and CSV logs.
+2. Check the release assets. Expected: both `Fromo-v0.1.0.zip` and `Fromo.zip` are present.

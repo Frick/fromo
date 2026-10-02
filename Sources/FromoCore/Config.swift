@@ -76,7 +76,9 @@ public struct Config: Codable, Equatable, Sendable {
             ("timer.extend_minutes", timer.extendMinutes),
             ("timer.lunch_minutes", timer.lunchMinutes),
             ("nags.interval_minutes", nags.intervalMinutes),
-        ] where value <= 0 { throw ConfigError("\(name) must be positive") }
+        ] where value <= 0 || value > Int.max / 60 {
+            throw ConfigError("\(name) must be positive and fit in seconds")
+        }
         if timer.dailyGoal < 0 { throw ConfigError("timer.daily_goal must not be negative") }
         if nags.idleThresholdMinutes < 0 { throw ConfigError("nags.idle_threshold_minutes must not be negative") }
         for (day, window) in workHours {
