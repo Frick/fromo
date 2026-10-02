@@ -23,6 +23,7 @@ jobs:
           swift build
           swift test
           .build/debug/fromo --version
+          python3 scripts/test-ipc.py
       - name: Shellcheck and SketchyBar fixtures (from M2)
         run: |
           if [ -f contrib/sketchybar/fromo.sh ]; then
@@ -45,6 +46,7 @@ jobs:
         run: |
           swift build -c release
           swift test
+          python3 scripts/test-ipc.py
           sh scripts/bundle.sh
           codesign --verify --deep --strict Fromo.app
           Fromo.app/Contents/Helpers/fromo --version

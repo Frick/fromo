@@ -55,6 +55,11 @@ public struct Engine: Sendable {
 
     public mutating func restore(env: Environment, pid: Int? = nil, recovered: Bool = false) -> [Effect] {
         var effects: [Effect] = []
+        if state.phase == .stopped {
+            state.phase = state.stoppedPhase ?? .ready
+            state.stoppedPhase = nil
+            effects += changed(at: env.now)
+        }
         if let pid, pid != state.pid {
             state.pid = pid
             effects += changed(at: env.now)
@@ -232,6 +237,7 @@ public struct Engine: Sendable {
         case .settings:
             return [.showSettingsWindow]
         case .stop:
+            state.stoppedPhase = state.phase
             state.phase = .stopped
             state.pid = 0
         default:
