@@ -2,5 +2,5 @@ import FromoCore
 import Testing
 
 @Test func versionIsAvailableToBothExecutables() {
-    #expect(FromoVersion.current == "0.4.1")
+    #expect(FromoVersion.current == "0.5.0")
 }
