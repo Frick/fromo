@@ -14,6 +14,13 @@ public struct RotationPosition: Codable, Equatable, Sendable {
         self.index = index
         self.name = name
     }
+    enum CodingKeys: String, CodingKey { case index, name }
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(index, forKey: .index)
+        if let name { try container.encode(name, forKey: .name) }
+        else { try container.encodeNil(forKey: .name) }
+    }
     public mutating func reconcile(_ list: [String]) {
         guard !list.isEmpty else { index = 0; name = nil; return }
         if let name, let found = list.firstIndex(of: name) { index = found }
@@ -75,6 +82,46 @@ public struct State: Codable, Equatable, Sendable {
     public var nagCursor = NagCursor()
     // A resumed or extended session needs its final planned length for CSV logging.
     public var plannedSeconds: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case version, pid, updatedAt, date, phase, breakKind, startedAt, endsAt, endedAt
+        case pausedPhase, remaining, task, nextTask, lunch, completedToday, dailyGoal
+        case cycleCount, rotation, inMeeting, nagsOffUntil, phaseEnteredAt, lastNagAt
+        case nagCursor, plannedSeconds
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(version, forKey: .version)
+        try container.encode(pid, forKey: .pid)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(date, forKey: .date)
+        try container.encode(phase, forKey: .phase)
+        try container.encode(completedToday, forKey: .completedToday)
+        try container.encode(dailyGoal, forKey: .dailyGoal)
+        try container.encode(cycleCount, forKey: .cycleCount)
+        try container.encode(rotation, forKey: .rotation)
+        try container.encode(inMeeting, forKey: .inMeeting)
+        try container.encode(phaseEnteredAt, forKey: .phaseEnteredAt)
+        try container.encode(nagCursor, forKey: .nagCursor)
+
+        func nullable<T: Encodable>(_ value: T?, _ key: CodingKeys) throws {
+            if let value { try container.encode(value, forKey: key) }
+            else { try container.encodeNil(forKey: key) }
+        }
+        try nullable(breakKind, .breakKind)
+        try nullable(startedAt, .startedAt)
+        try nullable(endsAt, .endsAt)
+        try nullable(endedAt, .endedAt)
+        try nullable(pausedPhase, .pausedPhase)
+        try nullable(remaining, .remaining)
+        try nullable(task, .task)
+        try nullable(nextTask, .nextTask)
+        try nullable(lunch, .lunch)
+        try nullable(nagsOffUntil, .nagsOffUntil)
+        try nullable(lastNagAt, .lastNagAt)
+        try nullable(plannedSeconds, .plannedSeconds)
+    }
 
     public init(now: Int, config: Config, calendar: Calendar, pid: Int = Int(ProcessInfo.processInfo.processIdentifier)) {
         self.pid = pid
