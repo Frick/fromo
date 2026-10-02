@@ -14,6 +14,8 @@ jobs:
     container: swift:6.2
     steps:
       - uses: actions/checkout@v5
+      - name: Install test tools
+        run: apt-get update && apt-get install -y python3 shellcheck jq
       - uses: actions/cache@v5
         with:
           path: .build
@@ -23,10 +25,10 @@ jobs:
           swift build
           swift test
           .build/debug/fromo --version
-      - name: Shellcheck and SketchyBar fixtures (from M2)
+          python3 scripts/test-ipc.py
+      - name: Shellcheck and SketchyBar fixtures
         run: |
           if [ -f contrib/sketchybar/fromo.sh ]; then
-            apt-get update && apt-get install -y shellcheck jq
             shellcheck contrib/sketchybar/fromo.sh
             sh scripts/test-sketchybar.sh
           fi
@@ -45,6 +47,7 @@ jobs:
         run: |
           swift build -c release
           swift test
+          python3 scripts/test-ipc.py
           sh scripts/bundle.sh
           codesign --verify --deep --strict Fromo.app
           Fromo.app/Contents/Helpers/fromo --version
@@ -71,3 +74,5 @@ jobs:
         run: |
           cp "Fromo-${GITHUB_REF_NAME}.zip" Fromo.zip
           gh release create "$GITHUB_REF_NAME" "Fromo-${GITHUB_REF_NAME}.zip" Fromo.zip --title "$GITHUB_REF_NAME" --generate-notes
+          test "$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets | length')" -eq 2
+          gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name'

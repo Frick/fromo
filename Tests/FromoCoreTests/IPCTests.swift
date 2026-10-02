@@ -1,0 +1,103 @@
+import Foundation
+import FromoCore
+import Testing
+
+@Test func protocolMapsEveryControlVerbAndRejectsMalformedArguments() throws {
+    let commands: [(String, Command)] = [
+        ("start", .start), ("start_break", .startBreak), ("pause", .pause), ("resume", .resume),
+        ("toggle", .toggle), ("next", .next), ("restart", .restart), ("reset", .reset),
+        ("end_break", .endBreak), ("extend", .extend(nil)), ("lunch", .lunch(nil)),
+        ("end_lunch", .endLunch), ("settings", .settings),
+    ]
+    for (verb, command) in commands {
+        #expect(try IPCRequest(cmd: verb).command() == command)
+    }
+    #expect(try IPCRequest(cmd: "extend", args: .init(minutes: 5)).command() == .extend(5))
+    #expect(try IPCRequest(cmd: "answer", args: .init(did: true, startNext: false)).command() == .answer(.didSuggested, startNext: false))
+    #expect(try IPCRequest(cmd: "answer", args: .init(other: "Other")).command() == .answer(.other("Other"), startNext: true))
+    #expect(throws: IPCError.self) { try IPCRequest(v: 2, cmd: "start").command() }
+    #expect(throws: IPCError.self) { try IPCRequest(cmd: "unknown").command() }
+    #expect(throws: IPCError.self) { try IPCRequest(cmd: "answer").command() }
+    #expect(throws: IPCError.self) { try IPCRequest(cmd: "extend", args: .init(minutes: Int.max)).command() }
+}
+
+@Test func socketRoundTripSingleInstanceAndStaleRecovery() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("fromo.sock").path
+    let server = try IPCServer(path: path)
+    let mode = try FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? NSNumber
+    #expect(mode?.intValue == 0o600)
+    #expect(throws: IPCError.self) { try IPCServer(path: path) }
+    let completion = DispatchSemaphore(value: 0)
+    DispatchQueue(label: "ipc-test").async {
+        defer { completion.signal() }
+        while (try? server.serveOne(timeoutMilliseconds: 2_000, handler: { request in
+            IPCResponse(ok: request.cmd == "ping")
+        })) == false {
+        }
+    }
+    let response = try IPCClient.request(IPCRequest(cmd: "ping"), path: path)
+    #expect(response.ok)
+    completion.wait()
+    server.close(removeSocket: false)
+    let recovered = try IPCServer(path: path)
+    recovered.close()
+    #expect(!FileManager.default.fileExists(atPath: path))
+}
+
+@Test func engineHostUsesInjectedClockForSocketCommands() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paths = Paths(environment: ["XDG_CONFIG_HOME": root.appendingPathComponent("c").path,
+                                   "XDG_STATE_HOME": root.appendingPathComponent("s").path], home: root.path)
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    let host = try EngineHost(paths: paths, calendar: calendar, pid: 99, now: 1_000, emit: { _ in })
+    #expect(host.handle(IPCRequest(cmd: "start"), now: 1_000).ok)
+    #expect(host.handle(IPCRequest(cmd: "extend", args: .init(minutes: Int.max / 60)), now: 1_001).code == "rejected")
+    #expect(host.handle(IPCRequest(cmd: "start"), now: 1_001).code == "rejected")
+    host.tick(now: 2_500)
+    #expect(host.handle(IPCRequest(cmd: "start_break"), now: 2_501).state?.task == "Pushups")
+    #expect(host.handle(IPCRequest(cmd: "end_break"), now: 2_502).ok)
+    #expect(host.handle(IPCRequest(cmd: "answer", args: .init(did: true, startNext: false)), now: 2_503).state?.phase == .ready)
+    #expect(try StateStore(url: paths.stateFile).read().rotation.short.name == "Squats")
+    #expect(host.handle(IPCRequest(cmd: "settings"), now: 2_504).code == "rejected")
+}
+
+@Test func cleanStopRetainsCountdownForRelaunch() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    var engine = Engine(now: 1_000, config: .init(), calendar: calendar)
+    _ = try engine.handle(.start, env: Environment(now: 1_000, calendar: calendar, config: .init()))
+    _ = try engine.handle(.stop, env: Environment(now: 1_010, calendar: calendar, config: .init()))
+    #expect(engine.state.phase == .stopped)
+    var restored = Engine(state: engine.state)
+    _ = restored.restore(env: Environment(now: 1_100, calendar: calendar, config: .init()), pid: 123)
+    #expect(restored.state.phase == .work)
+    #expect(restored.state.endsAt == 2_500)
+    #expect(restored.state.pid == 123)
+}
+
+@Test func presentationUsesInjectedTimeAndAllowsMinutesBeyondFiftyNine() {
+    #expect(StatePresentation.time(-1) == "00:00")
+    #expect(StatePresentation.time(3_600) == "60:00")
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    var state = State(now: 1_000, config: .init(), calendar: calendar)
+    state.phase = .work
+    state.endsAt = 2_122
+    #expect(StatePresentation.summary(state, now: 1_000) == "Work · 18:42 left\nToday: 0 of 8")
+}
+
+@Test func socketNeverReplacesAnOrdinaryFileAndRejectsOverlongPaths() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("fromo.sock")
+    try Data("synthetic file".utf8).write(to: url)
+    #expect(throws: IPCError.self) { try IPCServer(path: url.path) }
+    #expect(try String(contentsOf: url, encoding: .utf8) == "synthetic file")
+    #expect(throws: IPCError.self) { try IPCServer(path: "/tmp/" + String(repeating: "é", count: 60)) }
+}

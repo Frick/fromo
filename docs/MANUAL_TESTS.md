@@ -11,3 +11,10 @@ The owner completed these Mac checks successfully.
 # M1 — Core (`v0.1.0`)
 
 No owner action is required. CI, core tests, release assets and public download URLs are verified by the agent.
+
+# M2 — CLI and SketchyBar (`v0.2.0`)
+
+No owner action is required. The agent verifies CLI/socket integration and SketchyBar
+rendering against synthetic fixtures on Linux, and verifies macOS compilation and
+release downloads through CI and GitHub. The macOS app still has the M0 Quit menu;
+the full Mac timer loop is checked in M3.

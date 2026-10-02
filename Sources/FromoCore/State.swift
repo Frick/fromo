@@ -99,12 +99,13 @@ public struct State: Codable, Equatable, Sendable {
     public var nagCursor = NagCursor()
     // A resumed or extended session needs its final planned length for CSV logging.
     public var plannedSeconds: Int?
+    public var stoppedPhase: Phase?
 
     enum CodingKeys: String, CodingKey {
         case version, pid, updatedAt, date, phase, breakKind, startedAt, endsAt, endedAt
         case pausedPhase, remaining, task, nextTask, lunch, completedToday, dailyGoal
         case cycleCount, rotation, inMeeting, nagsOffUntil, phaseEnteredAt, lastNagAt
-        case nagCursor, plannedSeconds
+        case nagCursor, plannedSeconds, stoppedPhase
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -138,9 +139,10 @@ public struct State: Codable, Equatable, Sendable {
         try nullable(nagsOffUntil, .nagsOffUntil)
         try nullable(lastNagAt, .lastNagAt)
         try nullable(plannedSeconds, .plannedSeconds)
+        try nullable(stoppedPhase, .stoppedPhase)
     }
 
-    public init(now: Int, config: Config, calendar: Calendar, pid: Int = Int(ProcessInfo.processInfo.processIdentifier)) {
+    public init(now: Int, config: Config, calendar: Calendar, pid: Int = 0) {
         self.pid = pid
         self.updatedAt = now
         self.date = Self.localDate(now, calendar: calendar)

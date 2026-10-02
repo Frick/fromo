@@ -55,6 +55,11 @@ public struct Engine: Sendable {
 
     public mutating func restore(env: Environment, pid: Int? = nil, recovered: Bool = false) -> [Effect] {
         var effects: [Effect] = []
+        if state.phase == .stopped {
+            state.phase = state.stoppedPhase ?? .ready
+            state.stoppedPhase = nil
+            effects += changed(at: env.now)
+        }
         if let pid, pid != state.pid {
             state.pid = pid
             effects += changed(at: env.now)
@@ -124,17 +129,24 @@ public struct Engine: Sendable {
     }
 
     public mutating func handle(_ cmd: Command, env: Environment) throws -> [Effect] {
+        var candidate = self
+        let effects = try candidate.apply(cmd, env: env)
+        self = candidate
+        return effects
+    }
+
+    private mutating func apply(_ cmd: Command, env: Environment) throws -> [Effect] {
         let now = env.now
         let config = env.config
         var effects: [Effect] = []
         switch cmd {
         case .start where state.phase == .ready:
-            begin(.work, duration: config.timer.workMinutes * 60, now: now)
+            try begin(.work, duration: config.timer.workMinutes * 60, now: now)
         case .startBreak where state.phase == .workDone:
             let kind: BreakKind = state.cycleCount >= config.timer.longBreakEvery ? .long : .short
             state.breakKind = kind
             state.task = kind == .long ? state.rotation.long.name : state.rotation.short.name
-            begin(.break, duration: (kind == .long ? config.timer.longBreakMinutes : config.timer.shortBreakMinutes) * 60, now: now)
+            try begin(.break, duration: (kind == .long ? config.timer.longBreakMinutes : config.timer.shortBreakMinutes) * 60, now: now)
         case .pause where state.phase == .work || state.phase == .break:
             state.pausedPhase = state.phase
             state.remaining = max(0, state.endsAt! - now)
@@ -143,7 +155,7 @@ public struct Engine: Sendable {
             state.phaseEnteredAt = now
         case .resume where state.phase == .paused:
             state.phase = state.pausedPhase!
-            state.endsAt = now + state.remaining!
+            state.endsAt = try deadline(after: state.remaining!, from: now)
             state.remaining = nil
             state.pausedPhase = nil
             state.phaseEnteredAt = now
@@ -165,12 +177,12 @@ public struct Engine: Sendable {
             let minutes: Int
             if running == .work { minutes = config.timer.workMinutes }
             else { minutes = state.breakKind == .long ? config.timer.longBreakMinutes : config.timer.shortBreakMinutes }
-            begin(running, duration: minutes * 60, now: now)
+            try begin(running, duration: minutes * 60, now: now)
         case .extend(let requested) where state.phase == .work || state.phase == .break:
             let minutes = requested ?? config.timer.extendMinutes
-            guard minutes > 0 else { throw EngineError("Extension must be positive.") }
-            state.endsAt! += minutes * 60
-            state.plannedSeconds! += minutes * 60
+            guard minutes > 0, minutes <= Int.max / 60 else { throw EngineError("Extension must be positive and fit in seconds.") }
+            state.endsAt = try deadline(after: minutes * 60, from: state.endsAt!)
+            state.plannedSeconds = try deadline(after: minutes * 60, from: state.plannedSeconds!)
         case .reset where state.phase == .work || (state.phase == .paused && state.pausedPhase == .work):
             effects.append(.appendLog(row(kind: "work", outcome: "abandoned", end: now)))
             clearCountdown()
@@ -204,13 +216,13 @@ public struct Engine: Sendable {
             state.phaseEnteredAt = now
             state.updateNextTask(config: config)
             effects.append(.hideAnswerPanel)
-            if startNext { begin(.work, duration: config.timer.workMinutes * 60, now: now) }
+            if startNext { try begin(.work, duration: config.timer.workMinutes * 60, now: now) }
         case .lunch(let requested) where state.phase != .lunch && state.phase != .stopped:
             let minutes = requested ?? config.timer.lunchMinutes
-            guard minutes > 0 else { throw EngineError("Lunch duration must be positive.") }
+            guard minutes > 0, minutes <= Int.max / 60 else { throw EngineError("Lunch duration must be positive and fit in seconds.") }
             let prior = state.phase
             let remaining = (prior == .work || prior == .break) ? max(0, state.endsAt! - now) : state.remaining
-            state.lunch = LunchState(endsAt: now + minutes * 60, returnPhase: prior,
+            state.lunch = LunchState(endsAt: try deadline(after: minutes * 60, from: now), returnPhase: prior,
                                      returnRemaining: remaining, returnPhaseEnteredAt: state.phaseEnteredAt)
             state.phase = .lunch
             state.endsAt = nil
@@ -232,6 +244,7 @@ public struct Engine: Sendable {
         case .settings:
             return [.showSettingsWindow]
         case .stop:
+            state.stoppedPhase = state.phase
             state.phase = .stopped
             state.pid = 0
         default:
@@ -241,10 +254,17 @@ public struct Engine: Sendable {
         return effects
     }
 
-    private mutating func begin(_ phase: Phase, duration: Int, now: Int) {
+    private func deadline(after seconds: Int, from timestamp: Int) throws -> Int {
+        let (result, overflow) = timestamp.addingReportingOverflow(seconds)
+        guard seconds >= 0, !overflow else { throw EngineError("Duration exceeds the supported timestamp range.") }
+        return result
+    }
+
+    private mutating func begin(_ phase: Phase, duration: Int, now: Int) throws {
+        let end = try deadline(after: duration, from: now)
         state.phase = phase
         state.startedAt = now
-        state.endsAt = now + duration
+        state.endsAt = end
         state.endedAt = nil
         state.remaining = nil
         state.pausedPhase = nil
