@@ -28,6 +28,7 @@ public enum Command: Equatable, Sendable {
     case extend(Int?), lunch(Int?), endLunch, notToday(Bool)
     case answer(Answer, startNext: Bool)
     case reloadConfig, settings, stop
+    case openConfig, previewSound(String), testSketchyBar
 }
 
 public struct EngineError: Error, CustomStringConvertible, Equatable {
@@ -43,6 +44,7 @@ public enum Effect: Equatable, Sendable {
     case showAnswerPanel, hideAnswerPanel, showSettingsWindow, triggerSketchyBar
     case clearNotifications
     case setLaunchAtLogin(Bool)
+    case configError(String), configReloaded, logDiagnostic(String), clearConfigError, openConfig
 }
 
 public struct Engine: Sendable {
@@ -251,6 +253,12 @@ public struct Engine: Sendable {
             effects.append(.setLaunchAtLogin(config.general.launchAtLogin))
         case .settings:
             return [.showSettingsWindow]
+        case .openConfig:
+            return [.openConfig]
+        case .previewSound(let name):
+            return name.isEmpty || (state.inMeeting && config.sounds.muteInMeeting) ? [] : [.playSound(name)]
+        case .testSketchyBar:
+            return [.triggerSketchyBar]
         case .stop:
             state.stoppedPhase = state.phase
             state.phase = .stopped

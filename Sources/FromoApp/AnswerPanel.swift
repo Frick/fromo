@@ -9,7 +9,7 @@ final class AnswerForm: ObservableObject {
 
 @MainActor
 final class AnswerPanel: NSPanel {
-    private let model: AnswerPanelModel
+    private var model: AnswerPanelModel
     private let form = AnswerForm()
     private let submit: (Command) -> Void
     override var canBecomeKey: Bool { true }
@@ -34,6 +34,14 @@ final class AnswerPanel: NSPanel {
 
     private func choose(_ answer: Answer) {
         submit(model.command(answer: answer, startNext: form.startNext, shift: NSEvent.modifierFlags.contains(.shift)))
+    }
+
+    func update(model: AnswerPanelModel) {
+        self.model = model
+        let hosting = NSHostingView(rootView: AnswerView(model: model, form: form) { [weak self] answer in self?.choose(answer) })
+        contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        setContentSize(hosting.fittingSize)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

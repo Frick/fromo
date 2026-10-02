@@ -46,6 +46,30 @@ its menu item is disabled in M3. Probe/nag checks arrive in M5.
 
 ## M3 follow-up (`v0.3.2`)
 
+The owner verified login startup, segmented styling and stable countdown widths.
+
 1. Install with `sh scripts/install.sh`, with `[general] launch_at_login = true` in the config. Check System Settings → Login Items. Expected: Fromo is registered to open at login, or is listed awaiting approval; approve it if requested. If it remains missing, send the new `Launch at login` lines from `$XDG_STATE_HOME/fromo/fromo.log` (default `~/.local/state/fromo/fromo.log`), which include the requested setting, before/after status and any error domain/code.
 2. Log out and back in after registration/approval. Expected: Fromo opens automatically as a menu-bar app and restores its timer state.
 3. Replace the SketchyBar plugin with the updated `contrib/sketchybar/fromo.sh`; use the geometry and explicit `label.font="MesloLGL Nerd Font:Regular:15.0"` setting in its README, then reload SketchyBar. Observe a running countdown for several seconds. Expected: a colored icon-background segment with a near-black icon is connected to a dark label segment with near-white text; phase changes recolor the icon background, keeping text/icon colors constant. Neighboring items stay stationary as seconds change, as does the native status-item countdown.
+
+# M4 — Settings (`v0.4.0`)
+
+The agent verifies CI, persistence/reload/error policy, signing and release assets.
+These checks cover the native controls and filesystem event delivery on the Mac.
+Keep a copy of the current config before editing; UI writes rewrite the whole TOML
+file and can remove its comments. Nag/probe behavior is checked in M5.
+
+1. Install with `sh scripts/install.sh`, then open `Settings…` from the menu and from `fromo settings`. Expected: one native settings window opens in front, with General, Timer, Breaks, Work Hours, Nags, Sounds and SketchyBar tabs.
+2. In General, change the daily goal and toggle launch at login off/on. Commit a Timer duration change and wait about half a second, then inspect the TOML file printed by `fromo config path`. Expected: values are written automatically without Save; the menu's goal updates immediately, login registration follows the toggle, and any required approval has an Open Login Items button.
+3. In Breaks, add a synthetic task such as `Stretch`, rename it, drag it to a different position and remove it. Exercise the short, long and other lists. Expected: controls work and the TOML lists preserve the displayed order after closing/reopening settings.
+4. Enable a day in Work Hours and choose its start/end times; disable it again. Change a nag interval/message and meeting-detection checkbox in Nags. Expected: TOML contains zero-padded `HH:MM` values or `[]` for a disabled day, and all edited nag/meeting values persist.
+5. In Sounds, select a system sound and Preview it; select None; then Choose File… for an audio file and Preview it. Expected: previews play the selected sound, None is silent, and a selected file is stored as an absolute path.
+6. In SketchyBar, use the installed binary's absolute path if it is outside the documented auto-search locations. Temporarily run `sketchybar --set fromo update_freq=0 label=stale`, then click Send Test Trigger. Expected: the item redraws immediately from current timer state. Restore per-second updates with `sketchybar --set fromo update_freq=1`.
+7. Start work and note `ends_at` from `fromo status --json`. Change its configured duration in settings, then modify the daily goal and a break-list item in an editor that saves by file replacement. Expected: the current deadline stays fixed; settings and menu reflect valid editor changes without relaunch. The next newly started work phase uses the updated duration.
+8. With settings open, make the TOML invalid (for example, `work_minutes = -1`) and save it twice. Expected: one Config error notification for that error, an inline settings error, and continued operation with the last good config. The notification's Open Config action opens the file. Repair the file; expected: the error clears and valid values apply.
+9. Repeat an invalid file save, quit and reopen Fromo before repairing it. Expected: the app starts with defaults and one Config error notification, leaves the invalid file intact, and still permits settings/editor repair. Restore the original config when finished; expected: the UI and subsequent phases reflect the restored values.
+
+## M4 navigation follow-up (`v0.4.1`)
+
+1. Install with `sh scripts/install.sh` and open Settings. Resize the window down to its minimum width, then click General, Timer, Breaks, Work Hours, Nags, Sounds and SketchyBar in turn. Expected: the window opens wider and all seven native tabs remain directly clickable across the top, including at minimum width; selecting one displays its pane without an overflow menu.
+2. Change a setting and switch panes, then return to it. Expected: the edit persists through the pane switch and is written automatically as before.

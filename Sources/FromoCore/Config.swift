@@ -32,7 +32,7 @@ public struct Config: Codable, Equatable, Sendable {
         do { input = try TOMLTable(string: text) }
         catch { throw ConfigError("Invalid TOML: \(error)") }
         if let hours = input["work_hours"]?.table {
-            for day in hours.keys where !["mon", "tue", "wed", "thu", "fri", "sat", "sun"].contains(day) {
+            for day in hours.keys.sorted() where !WorkHoursEditor.days.contains(day) {
                 throw ConfigError("Unknown weekday: \(day)")
             }
         }
@@ -81,10 +81,14 @@ public struct Config: Codable, Equatable, Sendable {
         }
         if timer.dailyGoal < 0 { throw ConfigError("timer.daily_goal must not be negative") }
         if nags.idleThresholdMinutes < 0 { throw ConfigError("nags.idle_threshold_minutes must not be negative") }
-        for (day, window) in workHours {
-            if !["mon", "tue", "wed", "thu", "fri", "sat", "sun"].contains(day) {
-                throw ConfigError("Unknown weekday: \(day)")
-            }
+        if !sketchybar.path.isEmpty && !sketchybar.path.hasPrefix("/") {
+            throw ConfigError("sketchybar.path must be absolute or empty")
+        }
+        for day in workHours.keys.sorted() where !WorkHoursEditor.days.contains(day) {
+            throw ConfigError("Unknown weekday: \(day)")
+        }
+        for day in WorkHoursEditor.days {
+            let window = workHours[day] ?? []
             if window.isEmpty { continue }
             guard window.count == 2,
                   let start = Self.minutes(window[0]), let end = Self.minutes(window[1]), start < end else {

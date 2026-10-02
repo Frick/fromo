@@ -2,6 +2,8 @@ import AppKit
 import FromoCore
 import ServiceManagement
 import UserNotifications
+import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate, NSSoundDelegate {
@@ -15,6 +17,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private var terminating = false
     private var sketchybarFailed = false
     private var playingSounds: [NSSound] = []
+    private var settingsWindow: NSWindow?
+    private var settingsModel: SettingsModel?
+    private var configWatcher: ConfigDirectoryWatcher?
+    private var loginStatus: LoginItemStatus = .notRegistered
+    private var notificationsReady = false
+    private var pendingNotifications: [NotificationModel] = []
 
     private var now: Int { Int(Date().timeIntervalSince1970) }
 
@@ -26,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                 if !FileManager.default.fileExists(atPath: paths.configFile.path) { try configStore.write(Config()) }
                 notifications.delegate = self
                 host = try EngineHost(paths: paths, calendar: .current, pid: Int(ProcessInfo.processInfo.processIdentifier), now: now,
+                                      settingsAvailable: true, recoverInvalidConfigAtLaunch: true,
                                       eventSink: { [weak self] effect, snapshot in
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated { self?.execute(effect, snapshot: snapshot) }
@@ -37,6 +46,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                 Task { @MainActor in self?.log(error) }
             }
             runner?.start()
+            configWatcher = ConfigDirectoryWatcher(path: paths.configDirectory.path, changed: { [weak self] in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let self, !self.terminating else { return }
+                        _ = self.host?.reloadConfig(now: self.now)
+                    }
+                }
+            }, report: { [weak self] message in Task { @MainActor in self?.log(message) } })
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             item.button?.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "Fromo")
             item.button?.image?.isTemplate = true
@@ -55,6 +72,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             let quit = NSMenuItem(title: "Quit Fromo", action: #selector(quitApp), keyEquivalent: "q")
             quit.target = self
             appMenu.addItem(quit)
+            let settings = NSMenuItem(title: "Settings…", action: #selector(menuCommand(_:)), keyEquivalent: ",")
+            settings.target = self
+            settings.representedObject = CommandBox(.settings)
+            appMenu.insertItem(settings, at: 0)
+            let edit = NSMenu(title: "Edit")
+            for (title, selector, key) in [("Undo", "undo:", "z"), ("Redo", "redo:", "z"),
+                                           ("Cut", "cut:", "x"), ("Copy", "copy:", "c"),
+                                           ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
+                let item = NSMenuItem(title: title, action: Selector(selector), keyEquivalent: key)
+                if title == "Redo" { item.keyEquivalentModifierMask = [.command, .shift] }
+                edit.addItem(item)
+            }
+            let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+            editItem.submenu = edit
+            mainMenu.addItem(editItem)
             NSApp.mainMenu = mainMenu
             refresh()
             let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -68,6 +100,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             self.timer = timer
             installNotificationCategories(host.snapshot())
             notifications.requestAuthorization(options: [.alert]) { [weak self] _, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.notificationsReady = true
+                    let queued = self.pendingNotifications
+                    self.pendingNotifications.removeAll()
+                    queued.forEach { self.post($0) }
+                }
                 if let error {
                     let message = "Notification authorization: \(error)"
                     Task { @MainActor in self?.log(message) }
@@ -89,13 +128,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     private func refresh() {
         guard let snapshot = host?.snapshot() else { return }
-        let model = MenuModel(state: snapshot.state, config: snapshot.config, now: now)
+        let model = MenuModel(state: snapshot.state, config: snapshot.config, now: now, settingsAvailable: snapshot.settingsAvailable)
         statusItem?.button?.title = model.countdown.isEmpty ? "" : " " + model.countdown
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         guard let snapshot = host?.snapshot() else { return }
-        let model = MenuModel(state: snapshot.state, config: snapshot.config, now: now)
+        let model = MenuModel(state: snapshot.state, config: snapshot.config, now: now, settingsAvailable: snapshot.settingsAvailable)
         menu.removeAllItems()
         for text in [model.status, model.today] {
             let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
@@ -148,16 +187,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         switch effect {
         case .notify(let kind):
             let model = NotificationModel(kind: kind, state: snapshot.state, config: snapshot.config)
-            let content = UNMutableNotificationContent()
-            content.title = model.title
-            content.body = model.body
-            content.categoryIdentifier = kind
-            notifications.add(UNNotificationRequest(identifier: kind, content: content, trigger: nil)) { [weak self] error in
-                if let error {
-                    let message = "Notification delivery: \(error)"
-                    Task { @MainActor in self?.log(message) }
-                }
+            enqueue(model)
+        case .configError(let message):
+            enqueue(NotificationModel(kind: "config_error", state: snapshot.state, config: snapshot.config, detail: message))
+        case .clearConfigError:
+            pendingNotifications.removeAll { $0.kind == "config_error" }
+            notifications.removeDeliveredNotifications(withIdentifiers: ["config_error"])
+            notifications.removePendingNotificationRequests(withIdentifiers: ["config_error"])
+        case .configReloaded:
+            settingsModel?.receive(snapshot)
+            if snapshot.state.phase == .breakDone, let panel {
+                panel.update(model: AnswerPanelModel(state: snapshot.state, config: snapshot.config))
             }
+            refresh()
+        case .logDiagnostic(let message):
+            log(message)
+        case .openConfig:
+            NSWorkspace.shared.open(paths.configFile)
+        case .showSettingsWindow:
+            showSettings()
         case .playSound(let name):
             let sound = name.hasPrefix("/") ? NSSound(contentsOfFile: name, byReference: true) : NSSound(named: NSSound.Name(name))
             if let sound {
@@ -174,8 +222,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             panel?.dismiss()
             panel = nil
         case .clearNotifications:
-            notifications.removeAllDeliveredNotifications()
-            notifications.removeAllPendingNotificationRequests()
+            let phaseIDs = NotificationModel.phaseIdentifiers
+            pendingNotifications.removeAll { phaseIDs.contains($0.kind) }
+            notifications.removeDeliveredNotifications(withIdentifiers: phaseIDs)
+            notifications.removePendingNotificationRequests(withIdentifiers: phaseIDs)
         case .triggerSketchyBar:
             let existing = SketchyBarInvocation.knownLocations.filter { FileManager.default.isExecutableFile(atPath: $0) }
             guard let invocation = SketchyBarInvocation(config: snapshot.config.sketchybar, existing: existing) else { return }
@@ -198,8 +248,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
     }
 
+    private func enqueue(_ model: NotificationModel) {
+        if notificationsReady { post(model) }
+        else { pendingNotifications.append(model) }
+    }
+
+    private func post(_ model: NotificationModel) {
+        let content = UNMutableNotificationContent()
+        content.title = model.title
+        content.body = model.body
+        content.categoryIdentifier = model.kind
+        notifications.add(UNNotificationRequest(identifier: model.kind, content: content, trigger: nil)) { [weak self] error in
+            if let error {
+                let message = "Notification delivery: \(error)"
+                Task { @MainActor in self?.log(message) }
+            }
+        }
+    }
+
+    private func showSettings() {
+        guard let host else { return }
+        loginStatus = loginItemStatus(SMAppService.mainApp.status)
+        if settingsWindow == nil {
+            let names = ((try? FileManager.default.contentsOfDirectory(atPath: "/System/Library/Sounds")) ?? [])
+                .filter { ["aiff", "aif", "wav", "caf"].contains(URL(fileURLWithPath: $0).pathExtension.lowercased()) }
+                .map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent }.sorted()
+            let model = SettingsModel(snapshot: host.snapshot(), loginStatus: loginStatus, soundNames: names,
+                                      save: { [weak self] candidate in
+                guard let self else { throw ConfigError("Engine not running.") }
+                return try host.saveConfig(candidate, now: self.now)
+            }, openLoginItems: { SMAppService.openSystemSettingsLoginItems() },
+                                      chooseSoundFile: { [weak self] path in self?.chooseSoundFile(path) },
+                                      preview: { [weak self] name in self?.perform(.previewSound(name)) },
+                                      trigger: { [weak self] in self?.perform(.testSketchyBar) })
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 640),
+                                  styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+            window.title = "Fromo Settings"
+            window.contentMinSize = NSSize(width: 1040, height: 580)
+            window.isReleasedWhenClosed = false
+            window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
+            window.center()
+            settingsModel = model
+            settingsWindow = window
+        }
+        settingsModel?.receive(host.snapshot())
+        settingsModel?.loginStatus = loginStatus
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        loginStatus = loginItemStatus(SMAppService.mainApp.status)
+        settingsModel?.loginStatus = loginStatus
+    }
+
+    private func chooseSoundFile(_ path: WritableKeyPath<Config, String>) {
+        guard let window = settingsWindow else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.audio]
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.settingsModel?.edit { $0[keyPath: path] = url.path }
+        }
+    }
+
     private func installNotificationCategories(_ snapshot: HostSnapshot) {
-        let categories = ["work_end", "break_end", "lunch_end", "state_corrupt"].map { kind in
+        let categories = ["work_end", "break_end", "lunch_end", "state_corrupt", "config_error"].map { kind in
             let model = NotificationModel(kind: kind, state: snapshot.state, config: snapshot.config)
             let actions = model.actions.map { UNNotificationAction(identifier: $0.id, title: $0.title, options: []) }
             return UNNotificationCategory(identifier: kind, actions: actions, intentIdentifiers: [], options: [])
@@ -237,6 +353,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             log("Launch at login: domain=\(error.domain), code=\(error.code), \(error.localizedDescription)")
         }
         let after = loginItemStatus(service.status)
+        loginStatus = after
+        settingsModel?.loginStatus = after
         log("Launch at login: after=\(after.rawValue).")
         if after == .requiresApproval { log("Launch at login requires approval in System Settings → Login Items.") }
     }
@@ -270,6 +388,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         if terminating { return .terminateLater }
         terminating = true
         timer?.invalidate()
+        configWatcher?.stop()
+        _ = settingsModel?.persist(force: true)
         do { try host.stop(now: now) } catch { log("Quit: \(error)") }
         runner.stop {
             Task { @MainActor in NSApp.reply(toApplicationShouldTerminate: true) }
