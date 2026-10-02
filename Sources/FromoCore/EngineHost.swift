@@ -1,5 +1,10 @@
 import Foundation
 
+public struct HostSnapshot: Sendable {
+    public var state: State
+    public var config: Config
+}
+
 // All engine and file-store access is confined to this queue. The socket shell passes requests only.
 public final class EngineHost: @unchecked Sendable {
     private let queue = DispatchQueue(label: "fromo.engine")
@@ -8,9 +13,13 @@ public final class EngineHost: @unchecked Sendable {
     private let paths: Paths
     private let calendar: Calendar
     private let emit: @Sendable (Effect) -> Void
+    private let eventSink: (@Sendable (Effect, HostSnapshot) -> Void)?
 
-    public init(paths: Paths, calendar: Calendar, pid: Int, now: Int, emit: @escaping @Sendable (Effect) -> Void) throws {
+    public init(paths: Paths, calendar: Calendar, pid: Int, now: Int,
+                eventSink: (@Sendable (Effect, HostSnapshot) -> Void)? = nil,
+                emit: @escaping @Sendable (Effect) -> Void) throws {
         self.paths = paths; self.calendar = calendar; self.emit = emit
+        self.eventSink = eventSink
         config = try ConfigStore(url: paths.configFile).read().config
         let loaded = try StateStore(url: paths.stateFile).load(now: now, config: config, calendar: calendar)
         engine = Engine(state: loaded.state)
@@ -44,6 +53,22 @@ public final class EngineHost: @unchecked Sendable {
         }
     }
 
+    public func perform(_ command: Command, now: Int) -> IPCResponse {
+        queue.sync {
+            do {
+                try execute(engine.tick(env: environment(now)))
+                try execute(engine.handle(command, env: environment(now)))
+                return IPCResponse(ok: true, state: engine.state)
+            } catch {
+                return IPCResponse(ok: false, code: "rejected", error: String(describing: error))
+            }
+        }
+    }
+
+    public func snapshot() -> HostSnapshot {
+        queue.sync { HostSnapshot(state: engine.state, config: config) }
+    }
+
     public func tick(now: Int) {
         queue.sync {
             do { try execute(engine.tick(env: environment(now))) }
@@ -62,6 +87,7 @@ public final class EngineHost: @unchecked Sendable {
             case .appendLog(let row): try LogStore(directory: paths.logDirectory, calendar: calendar).append(row)
             default: emit(effect)
             }
+            eventSink?(effect, HostSnapshot(state: engine.state, config: config))
         }
     }
 }

@@ -41,6 +41,7 @@ public enum Effect: Equatable, Sendable {
     case notify(String)
     case playSound(String)
     case showAnswerPanel, hideAnswerPanel, showSettingsWindow, triggerSketchyBar
+    case clearNotifications
 }
 
 public struct Engine: Sendable {
@@ -76,6 +77,7 @@ public struct Engine: Sendable {
     }
 
     public mutating func tick(env: Environment) -> [Effect] {
+        let previousPhase = state.phase
         var effects: [Effect] = []
         let detected = (env.config.meetings.camera && env.cameraInUse)
             || (env.config.meetings.microphone && env.micInUse)
@@ -125,12 +127,14 @@ public struct Engine: Sendable {
             effects += finishLunch(at: state.lunch!.endsAt, env: env, early: false)
         default: break
         }
+        if state.phase != previousPhase { effects.insert(.clearNotifications, at: 0) }
         return effects
     }
 
     public mutating func handle(_ cmd: Command, env: Environment) throws -> [Effect] {
         var candidate = self
-        let effects = try candidate.apply(cmd, env: env)
+        var effects = try candidate.apply(cmd, env: env)
+        if candidate.state.phase != state.phase { effects.insert(.clearNotifications, at: 0) }
         self = candidate
         return effects
     }
