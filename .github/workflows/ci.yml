@@ -74,3 +74,5 @@ jobs:
         run: |
           cp "Fromo-${GITHUB_REF_NAME}.zip" Fromo.zip
           gh release create "$GITHUB_REF_NAME" "Fromo-${GITHUB_REF_NAME}.zip" Fromo.zip --title "$GITHUB_REF_NAME" --generate-notes
+          test "$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets | length')" -eq 2
+          gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name'
