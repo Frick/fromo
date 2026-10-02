@@ -4,7 +4,7 @@ import ServiceManagement
 import UserNotifications
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate, NSSoundDelegate {
     private var statusItem: NSStatusItem?
     private var host: EngineHost?
     private var runner: SocketRunner?
@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private let paths = Paths(environment: ProcessInfo.processInfo.environment, home: NSHomeDirectory())
     private var terminating = false
     private var sketchybarFailed = false
+    private var playingSounds: [NSSound] = []
 
     private var now: Int { Int(Date().timeIntervalSince1970) }
 
@@ -45,6 +46,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             menu.delegate = self
             item.menu = menu
             statusItem = item
+            let mainMenu = NSMenu()
+            let appMenu = NSMenu()
+            let applicationItem = NSMenuItem()
+            applicationItem.submenu = appMenu
+            mainMenu.addItem(applicationItem)
+            let quit = NSMenuItem(title: "Quit Fromo", action: #selector(quitApp), keyEquivalent: "q")
+            quit.target = self
+            appMenu.addItem(quit)
+            NSApp.mainMenu = mainMenu
             refresh()
             let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
@@ -150,7 +160,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             }
         case .playSound(let name):
             let sound = name.hasPrefix("/") ? NSSound(contentsOfFile: name, byReference: true) : NSSound(named: NSSound.Name(name))
-            sound?.play()
+            if let sound {
+                sound.delegate = self
+                playingSounds.append(sound)
+                if !sound.play() { playingSounds.removeAll { $0 === sound } }
+            }
         case .showAnswerPanel:
             let model = AnswerPanelModel(state: snapshot.state, config: snapshot.config)
             if panel == nil { panel = AnswerPanel(model: model) { [weak self] command in self?.perform(command) } }
@@ -211,6 +225,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             else if !enabled && SMAppService.mainApp.status != .notRegistered { try SMAppService.mainApp.unregister() }
             if SMAppService.mainApp.status == .requiresApproval { log("Launch at login requires approval in System Settings → Login Items.") }
         } catch { log("Launch at login: \(error)") }
+    }
+
+    nonisolated func sound(_ sound: NSSound, didFinishPlaying flag: Bool) {
+        let identifier = ObjectIdentifier(sound)
+        Task { @MainActor in self.playingSounds.removeAll { ObjectIdentifier($0) == identifier } }
     }
 
     @objc private func openLogs() {
