@@ -60,12 +60,13 @@ public struct NotificationActionModel: Equatable, Sendable {
 }
 
 public struct NotificationModel: Sendable {
+    public static let phaseIdentifiers = ["work_end", "break_end", "lunch_end", "nag"]
     public var kind: String
     public var title: String
     public var body: String
     public var actions: [NotificationActionModel]
 
-    public init(kind: String, state: State, config: Config) {
+    public init(kind: String, state: State, config: Config, detail: String? = nil) {
         self.kind = kind
         actions = []
         switch kind {
@@ -81,6 +82,10 @@ public struct NotificationModel: Sendable {
             actions = [NotificationActionModel(id: "continue", title: "Continue", command: .next)]
         case "state_corrupt":
             title = "State recovered"; body = "The invalid state file was preserved. Fromo is ready."
+        case "config_error":
+            title = "Config error"
+            body = (detail ?? "Invalid config.").components(separatedBy: "\n")[0]
+            actions = [NotificationActionModel(id: "open_config", title: "Open Config", command: .openConfig)]
         default:
             title = "Fromo"; body = kind
         }
@@ -91,6 +96,7 @@ public struct NotificationModel: Sendable {
         case "start_break": return .startBreak
         case "continue": return .next
         case "not_today": return .notToday(true)
+        case "open_config": return .openConfig
         case "body" where category == "break_end": return .next
         default: return nil
         }
