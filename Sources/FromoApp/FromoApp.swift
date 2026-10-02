@@ -26,7 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                 notifications.delegate = self
                 host = try EngineHost(paths: paths, calendar: .current, pid: Int(ProcessInfo.processInfo.processIdentifier), now: now,
                                       eventSink: { [weak self] effect, snapshot in
-                    Task { @MainActor in self?.execute(effect, snapshot: snapshot) }
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { self?.execute(effect, snapshot: snapshot) }
+                    }
                 }, emit: { _ in })
             } catch { server.close(); throw error }
             guard let host else { return }
@@ -151,12 +153,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             sound?.play()
         case .showAnswerPanel:
             let model = AnswerPanelModel(state: snapshot.state, config: snapshot.config)
-            panel?.orderOut(nil)
-            panel = AnswerPanel(model: model) { [weak self] command in self?.perform(command) }
+            if panel == nil { panel = AnswerPanel(model: model) { [weak self] command in self?.perform(command) } }
             NSApp.activate(ignoringOtherApps: true)
             panel?.makeKeyAndOrderFront(nil)
         case .hideAnswerPanel:
-            panel?.orderOut(nil)
+            panel?.dismiss()
             panel = nil
         case .clearNotifications:
             notifications.removeAllDeliveredNotifications()
@@ -206,8 +207,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     private func applyLoginItem(_ enabled: Bool) {
         do {
-            if enabled { try SMAppService.mainApp.register() }
-            else { try SMAppService.mainApp.unregister() }
+            if enabled && SMAppService.mainApp.status == .notRegistered { try SMAppService.mainApp.register() }
+            else if !enabled && SMAppService.mainApp.status != .notRegistered { try SMAppService.mainApp.unregister() }
             if SMAppService.mainApp.status == .requiresApproval { log("Launch at login requires approval in System Settings → Login Items.") }
         } catch { log("Launch at login: \(error)") }
     }

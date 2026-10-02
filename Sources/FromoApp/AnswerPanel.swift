@@ -25,7 +25,10 @@ final class AnswerPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
-        contentView = NSHostingView(rootView: AnswerView(model: model, form: form) { [weak self] answer in self?.choose(answer) })
+        let hosting = NSHostingView(rootView: AnswerView(model: model, form: form) { [weak self] answer in self?.choose(answer) })
+        contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        setContentSize(hosting.fittingSize)
         center()
     }
 
@@ -34,16 +37,26 @@ final class AnswerPanel: NSPanel {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if handleKey(event) { return true }
+        return super.performKeyEquivalent(with: event)
+    }
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown && handleKey(event) { return }
+        super.sendEvent(event)
+    }
+    private func handleKey(_ event: NSEvent) -> Bool {
         if event.keyCode == 53 { return true } // No Escape dismissal.
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        if [36, 76].contains(event.keyCode), model.suggestion != nil { choose(.didSuggested); return true }
+        let key = (event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers ?? "").lowercased()
         if key == "y", model.suggestion != nil { choose(.didSuggested); return true }
         if let number = Int(key), (1...9).contains(number), model.other.indices.contains(number - 1) {
             choose(.other(model.other[number - 1])); return true
         }
-        return super.performKeyEquivalent(with: event)
+        return false
     }
     override func cancelOperation(_ sender: Any?) {} // NSPanel's Escape action must not close the prompt.
     override func close() {} // Only the hideAnswerPanel effect removes it.
+    func dismiss() { super.close() }
 }
 
 @MainActor
