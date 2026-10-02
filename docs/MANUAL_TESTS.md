@@ -21,6 +21,10 @@ the full Mac timer loop is checked in M3.
 
 # M3 — Native app (`v0.3.0`)
 
+The owner verified the native timer loop, notifications, panel, recovery and
+SketchyBar integration. Login registration and segmented styling have the targeted
+follow-up below.
+
 CI, socket/CLI integration, core models, signing and release downloads are verified
 by the agent. These steps check native behavior on the Mac. Settings arrive in M4;
 its menu item is disabled in M3. Probe/nag checks arrive in M5.
@@ -39,3 +43,9 @@ its menu item is disabled in M3. Probe/nag checks arrive in M5.
 12. Choose `Open Log Folder`. Expected: Finder opens the XDG log folder containing the daily CSV; work completions, answers and lunch rows correspond to the loop just performed.
 13. Check System Settings → Login Items for Fromo, approve it if requested, then log out and back in. Expected: Fromo launches as a menu-bar agent and restores its timer state. If it does not, report the message in `$XDG_STATE_HOME/fromo/fromo.log` (default `~/.local/state/fromo/fromo.log`).
 14. Quit Fromo, restore the original timer values from step 2, and reopen it. Expected: subsequent phases use the original durations.
+
+## M3 follow-up (`v0.3.1`)
+
+1. Install with `sh scripts/install.sh`, with `[general] launch_at_login = true` in the config. Check System Settings → Login Items. Expected: Fromo is registered to open at login, or is listed awaiting approval; approve it if requested. If it remains missing, send the new `Launch at login` lines from `$XDG_STATE_HOME/fromo/fromo.log` (default `~/.local/state/fromo/fromo.log`), which include the requested setting, before/after status and any error domain/code.
+2. Log out and back in after registration/approval. Expected: Fromo opens automatically as a menu-bar app and restores its timer state.
+3. Replace the SketchyBar plugin with the updated `contrib/sketchybar/fromo.sh` and use the item geometry in its README (or the bar's existing matching defaults), then reload SketchyBar. Expected: a colored icon-background segment with a near-black icon is connected to a dark label segment with near-white text; phase changes recolor the icon background, keeping text/icon colors constant.
