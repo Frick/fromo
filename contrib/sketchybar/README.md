@@ -18,5 +18,5 @@ invalid, stopped, or its PID is dead. During a meeting it shows time only.
 The colors and Material Design icons are variables at the top of the script.
 Adjust them and the font in the item configuration to match the owner's bar.
 
-M2 ships the plugin and headless engine. The macOS app starts publishing timer
-state in M3; its current build still has the scaffold's Quit menu.
+The M3 macOS app publishes timer state and sends transition triggers. The hidden
+headless engine can also publish state in temporary XDG directories for development.
