@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             item.button?.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "Fromo")
             item.button?.image?.isTemplate = true
             item.button?.imagePosition = .imageLeading
+            item.button?.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
             let menu = NSMenu()
             menu.autoenablesItems = false
             menu.delegate = self
