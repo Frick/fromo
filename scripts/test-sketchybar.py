@@ -41,12 +41,17 @@ with tempfile.TemporaryDirectory(prefix="fromo-bar-") as root:
     for phase, label, icon, color in cases:
         state = dict(base, phase=phase)
         expected = ["--set", "fromo", "drawing=on", "label=" + label, "icon=" + icon,
-                    "icon.color=" + color, "label.color=" + color]
+                    "icon.color=0xff121219", "label.color=0xffECEFF4",
+                    "background.drawing=off", "icon.background.drawing=on", "icon.background.color=" + color,
+                    "label.background.drawing=on", "label.background.color=0xff3C3E4F", "label.drawing=on"]
         assert render(state) == expected, (phase, render(state))
         meeting_label = label.split(" ~ ")[-1] if " ~ " in label else ""
         expected[3] = "label=" + meeting_label
+        if not meeting_label:
+            expected[10] = "label.background.drawing=off"
+            expected[-1] = "label.drawing=off"
         assert render(dict(state, in_meeting=True)) == expected
-    assert render(dict(base, phase="break", break_kind="long"))[5:] == ["icon.color=0xff94e2d5", "label.color=0xff94e2d5"]
+    assert "icon.background.color=0xff94e2d5" in render(dict(base, phase="break", break_kind="long"))
     assert render(dict(base, phase="break", task=None))[3] == "label=Break ~ 02:02"
     assert render(dict(base, phase="break_done", task=None))[3] == "label=Break over ~ +01:40"
     assert render(dict(base, phase="work", ends_at=1))[3] == "label=Working ~ 00:00"

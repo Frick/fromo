@@ -6,6 +6,7 @@ STATE="${XDG_STATE_HOME:-$HOME/.local/state}/fromo/state.json"
 # Catppuccin Mocha; replace these values to match the owner's colors.sh.
 RED=0xfff38ba8 GREEN=0xffa6e3a1 TEAL=0xff94e2d5 PEACH=0xfffab387
 YELLOW=0xfff9e2af OVERLAY1=0xff7f849c SUBTEXT0=0xffa6adc8
+ICON_COLOR=0xff121219 LABEL_COLOR=0xffECEFF4 LABEL_BACKGROUND=0xff3C3E4F
 TIMER='󰔛' COFFEE='󰅶' PAUSE='󰏤' FOOD='󰔉' ALERT='󰀪'
 
 if [ "${SENDER:-}" = "mouse.clicked" ]; then
@@ -58,4 +59,9 @@ if [ "$in_meeting" = "true" ]; then label=$time
 elif [ -n "$time" ]; then label="$text ~ $time"
 else label=$text
 fi
-sketchybar --set "$NAME" drawing=on "label=$label" "icon=$icon" "icon.color=$color" "label.color=$color"
+label_drawing=on
+[ -n "$label" ] || label_drawing=off
+sketchybar --set "$NAME" drawing=on "label=$label" "icon=$icon" \
+    "icon.color=$ICON_COLOR" "label.color=$LABEL_COLOR" background.drawing=off \
+    icon.background.drawing=on "icon.background.color=$color" \
+    "label.background.drawing=$label_drawing" "label.background.color=$LABEL_BACKGROUND" "label.drawing=$label_drawing"
