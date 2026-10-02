@@ -149,14 +149,42 @@ struct ConfigValidate: ParsableCommand {
 }
 
 struct StatsCommand: ParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "stats", abstract: "Statistics (available in M6).")
-    @Flag var today = false
-    @Flag var week = false
-    @Flag var month = false
-    @Option var from: String?
-    @Option var to: String?
-    @Flag var json = false
-    mutating func run() throws { throw CLIFailure(message: "Stats are available in milestone M6.", code: 1) }
+    static let configuration = CommandConfiguration(commandName: "stats", abstract: "Report Pomodoros and break-task compliance from CSV logs.")
+    @Flag(help: "Report today.") var today = false
+    @Flag(help: "Report Monday through today (default).") var week = false
+    @Flag(help: "Report the first of this month through today.") var month = false
+    @Option(help: "First date of an inclusive custom range, YYYY-MM-DD.") var from: String?
+    @Option(help: "Last date of an inclusive custom range, YYYY-MM-DD.") var to: String?
+    @Flag(help: "Print the report as JSON.") var json = false
+
+    mutating func validate() throws {
+        let ranges = [today, week, month, from != nil || to != nil].filter { $0 }.count
+        if ranges > 1 { throw ValidationError("Choose one of --today, --week, --month, or --from/--to.") }
+        if (from == nil) != (to == nil) { throw ValidationError("Use --from and --to together.") }
+        if let from, let to {
+            do { _ = try StatsPeriod.custom(from: from, to: to, calendar: .current) }
+            catch { throw ValidationError(String(describing: error)) }
+        }
+    }
+
+    mutating func run() throws {
+        let calendar = Calendar.current
+        let period: StatsPeriod
+        if let from, let to { period = try StatsPeriod.custom(from: from, to: to, calendar: calendar) }
+        else {
+            period = try StatsPeriod.resolve(kind: today ? .today : (month ? .month : .week),
+                                             now: Int(Date().timeIntervalSince1970), calendar: calendar)
+        }
+        let document = try ConfigStore(url: paths().configFile).read()
+        for warning in document.warnings { FileHandle.standardError.write(Data((warning + "\n").utf8)) }
+        let report = try Stats.read(period: period, dailyGoal: document.config.timer.dailyGoal,
+                                   store: LogStore(directory: paths().logDirectory, calendar: calendar))
+        if report.skippedRows > 0 {
+            FileHandle.standardError.write(Data("Warning: skipped \(report.skippedRows) malformed or unsupported CSV rows.\n".utf8))
+        }
+        if json { FileHandle.standardOutput.write(try IPCCodec.encode(report)) }
+        else { print(report.text) }
+    }
 }
 
 struct Headless: ParsableCommand {
