@@ -68,3 +68,8 @@ file and can remove its comments. Nag/probe behavior is checked in M5.
 7. Start work and note `ends_at` from `fromo status --json`. Change its configured duration in settings, then modify the daily goal and a break-list item in an editor that saves by file replacement. Expected: the current deadline stays fixed; settings and menu reflect valid editor changes without relaunch. The next newly started work phase uses the updated duration.
 8. With settings open, make the TOML invalid (for example, `work_minutes = -1`) and save it twice. Expected: one Config error notification for that error, an inline settings error, and continued operation with the last good config. The notification's Open Config action opens the file. Repair the file; expected: the error clears and valid values apply.
 9. Repeat an invalid file save, quit and reopen Fromo before repairing it. Expected: the app starts with defaults and one Config error notification, leaves the invalid file intact, and still permits settings/editor repair. Restore the original config when finished; expected: the UI and subsequent phases reflect the restored values.
+
+## M4 navigation follow-up (`v0.4.1`)
+
+1. Install with `sh scripts/install.sh` and open Settings. Resize the window down to its minimum width, then click General, Timer, Breaks, Work Hours, Nags, Sounds and SketchyBar in turn. Expected: all seven labels remain visible and directly clickable across the top of the content; selecting one displays its pane without an overflow menu.
+2. Change a setting and switch panes, then return to it. Expected: the edit persists through the pane switch and is written automatically as before.

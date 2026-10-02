@@ -284,6 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 640),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             window.title = "Fromo Settings"
+            window.contentMinSize = NSSize(width: 740, height: 580)
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
             window.center()
