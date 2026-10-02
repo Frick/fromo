@@ -79,3 +79,13 @@ private func appState(_ phase: Phase) -> State {
     #expect(engine.state.rotation.short.name == "Synthetic task")
     #expect(engine.state.endsAt == 2_500)
 }
+
+@Test func loginPreferenceIsAnEngineEffectOnLaunchAndConfigChange() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    var engine = Engine(now: 1_000, config: .init(), calendar: calendar)
+    #expect(engine.restore(env: Environment(now: 1_000, calendar: calendar, config: .init())).contains(.setLaunchAtLogin(true)))
+    var config = Config()
+    config.general.launchAtLogin = false
+    #expect(try engine.handle(.reloadConfig, env: Environment(now: 1_001, calendar: calendar, config: config)).contains(.setLaunchAtLogin(false)))
+}

@@ -42,6 +42,7 @@ public enum Effect: Equatable, Sendable {
     case playSound(String)
     case showAnswerPanel, hideAnswerPanel, showSettingsWindow, triggerSketchyBar
     case clearNotifications
+    case setLaunchAtLogin(Bool)
 }
 
 public struct Engine: Sendable {
@@ -74,6 +75,7 @@ public struct Engine: Sendable {
         if state.phase == .breakDone && !state.inMeeting && !effects.contains(.showAnswerPanel) {
             effects.append(.showAnswerPanel)
         }
+        effects.append(.setLaunchAtLogin(env.config.general.launchAtLogin))
         return effects
     }
 
@@ -246,6 +248,7 @@ public struct Engine: Sendable {
             state.rotation.long.reconcile(config.breaks.long)
             state.dailyGoal = config.timer.dailyGoal
             state.updateNextTask(config: config)
+            effects.append(.setLaunchAtLogin(config.general.launchAtLogin))
         case .settings:
             return [.showSettingsWindow]
         case .stop:

@@ -72,7 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                     Task { @MainActor in self?.log(message) }
                 }
             }
-            applyLoginItem(host.snapshot().config.general.launchAtLogin)
         } catch let error as IPCError where error.description == "An engine is already running." {
             log(error.description)
             NSApp.terminate(nil)
@@ -192,6 +191,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             catch { logSketchybar("SketchyBar trigger: \(error)") }
         case .writeState:
             refresh()
+        case .setLaunchAtLogin(let enabled):
+            applyLoginItem(enabled)
         default: break
         }
     }
