@@ -1,53 +1,26 @@
 import FromoCore
 import SwiftUI
 
-private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general = "General"
-    case timer = "Timer"
-    case breaks = "Breaks"
-    case hours = "Work Hours"
-    case nags = "Nags"
-    case sounds = "Sounds"
-    case sketchybar = "SketchyBar"
-    var id: Self { self }
-}
-
 @MainActor
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
-    @State private var selection: SettingsPane = .general
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Settings section", selection: $selection) {
-                ForEach(SettingsPane.allCases) { pane in
-                    Text(pane.rawValue).tag(pane)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            Divider()
             if let error = model.error {
                 Text(error).foregroundStyle(.red).font(.callout)
                     .frame(maxWidth: .infinity, alignment: .leading).padding()
             }
-            selectedPane
+            TabView {
+                general.tabItem { Label("General", systemImage: "gearshape") }
+                timer.tabItem { Label("Timer", systemImage: "timer") }
+                breaks.tabItem { Label("Breaks", systemImage: "list.bullet") }
+                hours.tabItem { Label("Work Hours", systemImage: "clock") }
+                nags.tabItem { Label("Nags", systemImage: "bell") }
+                sounds.tabItem { Label("Sounds", systemImage: "speaker.wave.2") }
+                sketchybar.tabItem { Label("SketchyBar", systemImage: "menubar.rectangle") }
+            }
         }
-        .frame(minWidth: 740, minHeight: 580)
-    }
-
-    @ViewBuilder
-    private var selectedPane: some View {
-        switch selection {
-        case .general: general
-        case .timer: timer
-        case .breaks: breaks
-        case .hours: hours
-        case .nags: nags
-        case .sounds: sounds
-        case .sketchybar: sketchybar
-        }
+        .frame(minWidth: 1040, minHeight: 580)
     }
 
     private var general: some View {

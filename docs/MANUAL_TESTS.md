@@ -71,5 +71,5 @@ file and can remove its comments. Nag/probe behavior is checked in M5.
 
 ## M4 navigation follow-up (`v0.4.1`)
 
-1. Install with `sh scripts/install.sh` and open Settings. Resize the window down to its minimum width, then click General, Timer, Breaks, Work Hours, Nags, Sounds and SketchyBar in turn. Expected: all seven labels remain visible and directly clickable across the top of the content; selecting one displays its pane without an overflow menu.
+1. Install with `sh scripts/install.sh` and open Settings. Resize the window down to its minimum width, then click General, Timer, Breaks, Work Hours, Nags, Sounds and SketchyBar in turn. Expected: the window opens wider and all seven native tabs remain directly clickable across the top, including at minimum width; selecting one displays its pane without an overflow menu.
 2. Change a setting and switch panes, then return to it. Expected: the edit persists through the pane switch and is written automatically as before.

@@ -281,10 +281,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                                       chooseSoundFile: { [weak self] path in self?.chooseSoundFile(path) },
                                       preview: { [weak self] name in self?.perform(.previewSound(name)) },
                                       trigger: { [weak self] in self?.perform(.testSketchyBar) })
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 640),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 640),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             window.title = "Fromo Settings"
-            window.contentMinSize = NSSize(width: 740, height: 580)
+            window.contentMinSize = NSSize(width: 1040, height: 580)
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
             window.center()
