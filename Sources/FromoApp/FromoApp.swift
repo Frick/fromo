@@ -268,6 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     private func showSettings() {
         guard let host else { return }
+        loginStatus = loginItemStatus(SMAppService.mainApp.status)
         if settingsWindow == nil {
             let names = ((try? FileManager.default.contentsOfDirectory(atPath: "/System/Library/Sounds")) ?? [])
                 .filter { ["aiff", "aif", "wav", "caf"].contains(URL(fileURLWithPath: $0).pathExtension.lowercased()) }
@@ -293,6 +294,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         settingsModel?.loginStatus = loginStatus
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        loginStatus = loginItemStatus(SMAppService.mainApp.status)
+        settingsModel?.loginStatus = loginStatus
     }
 
     private func chooseSoundFile(_ path: WritableKeyPath<Config, String>) {

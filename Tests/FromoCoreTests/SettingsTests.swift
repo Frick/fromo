@@ -99,6 +99,11 @@ import Testing
     #expect(host.snapshot().state.endsAt == 2_500)
     #expect(host.snapshot().state.dailyGoal == 10)
     #expect(try ConfigStore(url: paths.configFile).read().config.timer.workMinutes == 30)
+    let savedBytes = try Data(contentsOf: paths.configFile)
+    var invalid = config
+    invalid.timer.workMinutes = -1
+    #expect(throws: ConfigError.self) { try host.saveConfig(invalid, now: 1_101) }
+    #expect(try Data(contentsOf: paths.configFile) == savedBytes)
     // Atomic replace, as performed by an editor. The host reads the replacement path.
     let replacement = paths.configDirectory.appendingPathComponent("replacement.toml")
     try "[timer]\nwork_minutes = 35\n".write(to: replacement, atomically: true, encoding: .utf8)
@@ -111,6 +116,36 @@ import Testing
     #expect(host.reloadConfig(now: 1_300).configError != nil)
     #expect(host.snapshot().config.timer.workMinutes == 35)
     #expect(host.snapshot().state.endsAt == 2_500)
+}
+
+private final class SettingsEffectRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Effect] = []
+    func append(_ effect: Effect) { lock.lock(); values.append(effect); lock.unlock() }
+    var errors: Int {
+        lock.lock(); defer { lock.unlock() }
+        return values.filter { if case .configError = $0 { return true }; return false }.count
+    }
+}
+
+@Test func hostNotifiesOnceForEachErrorAndClearsErrorAfterRepair() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paths = Paths(environment: ["XDG_CONFIG_HOME": root.appendingPathComponent("c").path,
+                                   "XDG_STATE_HOME": root.appendingPathComponent("s").path], home: root.path)
+    let recorder = SettingsEffectRecorder()
+    let host = try EngineHost(paths: paths, calendar: Calendar(identifier: .gregorian), pid: 123, now: 1_000,
+                              emit: { recorder.append($0) })
+    try ConfigStore(url: paths.configFile).write(Config())
+    try "[timer]\nwork_minutes = -1\n".write(to: paths.configFile, atomically: true, encoding: .utf8)
+    _ = host.reloadConfig(now: 1_001)
+    _ = host.reloadConfig(now: 1_002)
+    #expect(recorder.errors == 1)
+    try "[timer]\nshort_break_minutes = -1\n".write(to: paths.configFile, atomically: true, encoding: .utf8)
+    _ = host.reloadConfig(now: 1_003)
+    #expect(recorder.errors == 2)
+    try ConfigStore(url: paths.configFile).write(Config())
+    #expect(host.reloadConfig(now: 1_004).configError == nil)
 }
 
 @Test func invalidStartupDefaultsAreOptInAndLeaveTheFileIntact() throws {
@@ -140,4 +175,34 @@ import Testing
     #expect(model.actions.map(\.command) == [.openConfig])
     #expect(NotificationModel.command(for: "open_config") == .openConfig)
     #expect(!NotificationModel.phaseIdentifiers.contains("config_error"))
+}
+
+@Test func previewAndTestActionsAreEffectsAndRespectMeetingMute() throws {
+    let calendar = Calendar(identifier: .gregorian)
+    var state = State(now: 1_000, config: Config(), calendar: calendar)
+    state.inMeeting = true
+    var engine = Engine(state: state)
+    let silent = try engine.handle(.previewSound("Glass"), env: Environment(now: 1_000, calendar: calendar, config: Config()))
+    #expect(silent.isEmpty)
+    var config = Config()
+    config.sounds.muteInMeeting = false
+    let audible = try engine.handle(.previewSound("/synthetic/sound.wav"), env: Environment(now: 1_001, calendar: calendar, config: config))
+    #expect(audible == [.playSound("/synthetic/sound.wav")])
+    let trigger = try engine.handle(.testSketchyBar, env: Environment(now: 1_002, calendar: calendar, config: config))
+    #expect(trigger == [.triggerSketchyBar])
+    #expect(engine.state.updatedAt == 1_000)
+}
+
+@Test func binaryPathValidationAndWorkHourErrorsAreDeterministic() throws {
+    #expect(throws: ConfigError.self) { try Config.parse("[sketchybar]\npath = 'relative/sketchybar'") }
+    #expect(try Config.parse("[sketchybar]\npath = '/synthetic/sketchybar'").config.sketchybar.path == "/synthetic/sketchybar")
+    var config = Config()
+    config.workHours["mon"] = ["18:00", "09:00"]
+    config.workHours["tue"] = ["18:00", "09:00"]
+    do {
+        try config.validate()
+        Issue.record("Expected invalid work hours")
+    } catch let error as ConfigError {
+        #expect(error.description.contains("work_hours.mon"))
+    }
 }
