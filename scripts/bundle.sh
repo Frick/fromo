@@ -3,8 +3,8 @@ set -eu
 
 cd "$(dirname "$0")/.."
 version=$(git describe --tags --always)
-short_version=$(printf '%s' "$version" | sed -n 's/^v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
-short_version=${short_version:-0.0.1}
+short_version=$(printf '%s' "$version" | sed -n 's/^v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$/\1/p')
+short_version=${short_version:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)}
 bundle=Fromo.app
 archive="Fromo-${version}.zip"
 build_dir=$(swift build -c release --show-bin-path)
