@@ -156,6 +156,11 @@ public struct State: Codable, Equatable, Sendable {
     }
 
     public mutating func updateNextTask(config: Config) {
-        nextTask = (cycleCount >= config.timer.longBreakEvery ? rotation.long : rotation.short).name
+        let waitingForBreak = phase == .workDone || (phase == .lunch && lunch?.returnPhase == .workDone)
+        let count: Int
+        if waitingForBreak { count = cycleCount }
+        else if breakKind == .long && [.break, .breakDone, .paused, .lunch].contains(phase) { count = 1 }
+        else { count = cycleCount + 1 }
+        nextTask = (count >= config.timer.longBreakEvery ? rotation.long : rotation.short).name
     }
 }

@@ -38,6 +38,7 @@ private func env(_ time: Int, _ config: Config = .init()) -> Environment {
         #expect(engine.state.breakKind == (index == 4 ? .long : .short))
         _ = try engine.handle(.endBreak, env: env(now + 62, config))
         _ = try engine.handle(.answer(.didSuggested, startNext: index < 4), env: env(now + 63, config))
+        if index == 3 { #expect(engine.state.nextTask == "Go for Walk") }
     }
     #expect(engine.state.phase == .ready)
     #expect(engine.state.cycleCount == 0)
