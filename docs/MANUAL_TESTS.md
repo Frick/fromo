@@ -76,6 +76,8 @@ file and can remove its comments. Nag/probe behavior is checked in M5.
 
 # M5 — Nags and probes (`v0.5.0`)
 
+The owner verified the M5 checks successfully.
+
 Core eligibility/cooldown/cursor tests, debug IPC, CI, signing and downloads are
 verified by the agent. These steps check actual Mac input/device status and native
 notifications. Keep the original settings values so they can be restored afterward.
@@ -88,3 +90,12 @@ notifications. Keep the original settings values so they can be restored afterwa
 6. In ready/waiting, choose Not Today from a nag or menu. Expected: no further nags, and debug reports Not Today suppression. Turn it off; expected: nags can resume after the normal interval. Enter lunch; expected: no nags while lunch is active.
 7. If the no-call microphone result from step 1 was false, temporarily enable microphone meeting detection and use an input-only audio session. Expected: debug reports microphone/in-meeting true and suppresses nags; stopping input grants the same 30-second meeting grace. If it reports permanently in use, retain the default off setting.
 8. Restore the original timer/work-hours/nag/meeting settings. Expected: debug and subsequent phases/nags reflect those values without restarting the app.
+
+# M6 — Stats (`v0.6.0`)
+
+Synthetic aggregation, CSV quoting, malformed rows, date ranges, CLI usage/exit codes,
+JSON output and operation without an engine are verified by the agent on Linux and
+macOS CI. This final check is against the owner's local data; logs stay on the Mac.
+
+1. Install with `sh scripts/install.sh`, then run `fromo stats --week` against a week of accumulated logs. Expected: the report shows completed/abandoned Pomodoros, completed planned focus time including extensions, short/long breaks, suggestion compliance, task/other counts and one completed/goal line per day; missing days show zero.
+2. Run `fromo stats --week --json` and compare its totals with the text report and local CSV rows. Expected: the totals agree, and the currently configured daily goal is applied to every day. Text compliance is rounded to whole percent; JSON retains the numeric percentage.
