@@ -45,6 +45,7 @@ public enum Effect: Equatable, Sendable {
 
 public struct Engine: Sendable {
     public private(set) var state: State
+    private var meetingQuietSince: Int? = nil
 
     public init(now: Int, config: Config, calendar: Calendar, pid: Int = 0) {
         state = State(now: now, config: config, calendar: calendar, pid: pid)
@@ -71,6 +72,25 @@ public struct Engine: Sendable {
 
     public mutating func tick(env: Environment) -> [Effect] {
         var effects: [Effect] = []
+        let detected = (env.config.meetings.camera && env.cameraInUse)
+            || (env.config.meetings.microphone && env.micInUse)
+        if detected {
+            meetingQuietSince = nil
+            if !state.inMeeting {
+                state.inMeeting = true
+                if state.phase == .breakDone { effects.append(.hideAnswerPanel) }
+                effects += changed(at: env.now)
+            }
+        } else if state.inMeeting {
+            if let quietSince = meetingQuietSince {
+                if env.now - quietSince >= 30 {
+                    state.inMeeting = false
+                    meetingQuietSince = nil
+                    if state.phase == .breakDone { effects.append(.showAnswerPanel) }
+                    effects += changed(at: env.now)
+                }
+            } else { meetingQuietSince = env.now }
+        }
         let date = State.localDate(env.now, calendar: env.calendar)
         if date != state.date {
             state.date = date
@@ -91,7 +111,8 @@ public struct Engine: Sendable {
             state.endedAt = deadline
             state.phaseEnteredAt = deadline
             state.updateNextTask(config: env.config)
-            effects += [.notify("work_end"), .playSound("work_end")]
+            effects += [.notify("work_end")]
+            effects += sound("work_end", config: env.config)
             effects += changed(at: env.now)
         case .break where (state.endsAt ?? Int.max) <= env.now:
             effects += endBreak(at: state.endsAt!, env: env)
@@ -250,7 +271,8 @@ public struct Engine: Sendable {
         state.remaining = nil
         state.pausedPhase = nil
         state.phaseEnteredAt = time
-        var effects: [Effect] = [.notify("break_end"), .playSound("break_end")]
+        var effects: [Effect] = [.notify("break_end")]
+        effects += sound("break_end", config: env.config)
         if !state.inMeeting { effects.append(.showAnswerPanel) }
         effects += changed(at: env.now)
         return effects
@@ -272,7 +294,8 @@ public struct Engine: Sendable {
             state.phaseEnteredAt = lunch.returnPhaseEnteredAt
         }
         state.lunch = nil
-        effects += [.notify("lunch_end"), .playSound("lunch_end")]
+        effects += [.notify("lunch_end")]
+        effects += sound("lunch_end", config: env.config)
         if state.phase == .breakDone && !state.inMeeting { effects.append(.showAnswerPanel) }
         effects += changed(at: env.now)
         return effects
@@ -286,5 +309,9 @@ public struct Engine: Sendable {
     private mutating func changed(at now: Int) -> [Effect] {
         state.updatedAt = now
         return [.writeState(state), .triggerSketchyBar]
+    }
+
+    private func sound(_ name: String, config: Config) -> [Effect] {
+        state.inMeeting && config.sounds.muteInMeeting ? [] : [.playSound(name)]
     }
 }

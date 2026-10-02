@@ -160,6 +160,36 @@ private func env(_ time: Int, _ config: Config = .init()) -> Environment {
     #expect(effects.contains { if case .appendLog(let row) = $0 { return row.end - row.start == 1_500 }; return false })
 }
 
+@Test func meetingProbeSuppressesPanelAndSoundUntilThirtyQuietSeconds() throws {
+    var engine = Engine(now: 1_000, config: .init(), calendar: env(1_000).calendar)
+    _ = try engine.handle(.start, env: env(1_000))
+    _ = engine.tick(env: Environment(now: 2_500, calendar: env(2_500).calendar, config: .init()))
+    _ = try engine.handle(.startBreak, env: env(2_501))
+    let busy = Environment(now: 2_502, calendar: env(2_502).calendar, config: .init(), cameraInUse: true)
+    _ = engine.tick(env: busy)
+    #expect(engine.state.inMeeting)
+    let effects = try engine.handle(.endBreak, env: busy)
+    #expect(effects.contains(.notify("break_end")))
+    #expect(!effects.contains(.playSound("break_end")))
+    #expect(!effects.contains(.showAnswerPanel))
+    _ = engine.tick(env: env(2_503))
+    #expect(engine.state.inMeeting)
+    _ = engine.tick(env: env(2_532))
+    #expect(engine.state.inMeeting)
+    #expect(engine.tick(env: env(2_533)).contains(.showAnswerPanel))
+    #expect(!engine.state.inMeeting)
+}
+
+@Test func microphoneProbeIsOffByDefaultAndCanBeEnabled() throws {
+    var engine = Engine(now: 1_000, config: .init(), calendar: env(1_000).calendar)
+    let mic = Environment(now: 1_001, calendar: env(1_001).calendar, config: .init(), micInUse: true)
+    #expect(engine.tick(env: mic).isEmpty)
+    var config = Config()
+    config.meetings.microphone = true
+    let enabled = Environment(now: 1_002, calendar: env(1_002).calendar, config: config, micInUse: true)
+    #expect(engine.tick(env: enabled).contains { if case .writeState(let state) = $0 { return state.inMeeting }; return false })
+}
+
 @Test func pauseAndLunchFreezeTimeAcrossRestart() throws {
     var engine = Engine(now: 1_000, config: .init(), calendar: env(1_000).calendar)
     _ = try engine.handle(.start, env: env(1_000))
