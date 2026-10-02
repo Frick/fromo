@@ -312,6 +312,14 @@ public struct Engine: Sendable {
     }
 
     private func sound(_ name: String, config: Config) -> [Effect] {
-        state.inMeeting && config.sounds.muteInMeeting ? [] : [.playSound(name)]
+        if state.inMeeting && config.sounds.muteInMeeting { return [] }
+        let configured: String
+        switch name {
+        case "work_end": configured = config.sounds.workEnd
+        case "break_end": configured = config.sounds.breakEnd
+        case "lunch_end": configured = config.sounds.lunchEnd
+        default: return []
+        }
+        return configured.isEmpty ? [] : [.playSound(configured)]
     }
 }

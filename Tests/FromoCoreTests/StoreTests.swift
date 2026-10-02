@@ -22,6 +22,10 @@ private func temporaryPaths() throws -> Paths {
     #expect(try store.read() == state)
     let json = try String(contentsOf: paths.stateFile, encoding: .utf8)
     #expect(json.contains("\"break_kind\""))
+    state.phase = .lunch
+    state.lunch = LunchState(endsAt: 2_000, returnPhase: .ready, returnRemaining: nil, returnPhaseEnteredAt: 1_000)
+    try store.write(state)
+    #expect(try String(contentsOf: paths.stateFile, encoding: .utf8).contains("\"return_remaining\" : null"))
     try Data("{invalid".utf8).write(to: paths.stateFile)
     let recovered = try store.load(now: 2_000, config: Config(), calendar: calendar)
     #expect(recovered.recovered)

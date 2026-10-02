@@ -55,6 +55,16 @@ public struct LunchState: Codable, Equatable, Sendable {
         self.returnRemaining = returnRemaining
         self.returnPhaseEnteredAt = returnPhaseEnteredAt
     }
+
+    enum CodingKeys: String, CodingKey { case endsAt, returnPhase, returnRemaining, returnPhaseEnteredAt }
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(endsAt, forKey: .endsAt)
+        try container.encode(returnPhase, forKey: .returnPhase)
+        if let returnRemaining { try container.encode(returnRemaining, forKey: .returnRemaining) }
+        else { try container.encodeNil(forKey: .returnRemaining) }
+        try container.encode(returnPhaseEnteredAt, forKey: .returnPhaseEnteredAt)
+    }
 }
 
 public struct NagCursor: Codable, Equatable, Sendable {
@@ -76,7 +86,7 @@ public struct State: Codable, Equatable, Sendable {
     public var pausedPhase: Phase?
     public var remaining: Int?
     public var task: String?
-    public var nextTask: String?
+    public var nextTask: String? = nil
     public var lunch: LunchState?
     public var completedToday = 0
     public var dailyGoal: Int
@@ -137,7 +147,7 @@ public struct State: Codable, Equatable, Sendable {
         self.dailyGoal = config.timer.dailyGoal
         self.rotation = Rotation(config: config)
         self.phaseEnteredAt = now
-        self.nextTask = rotation.short.name
+        self.updateNextTask(config: config)
     }
 
     public static func localDate(_ timestamp: Int, calendar: Calendar) -> String {

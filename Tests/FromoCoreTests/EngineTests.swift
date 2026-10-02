@@ -19,6 +19,7 @@ private func env(_ time: Int, _ config: Config = .init()) -> Environment {
     #expect(engine.state.endedAt == 2_500)
     #expect(engine.state.completedToday == 1)
     #expect(effects.contains { if case .appendLog(let row) = $0 { return row.end == 2_500 }; return false })
+    #expect(effects.contains(.playSound("Glass")))
     #expect(engine.tick(env: env(5_001)).isEmpty)
     #expect(throws: EngineError.self) { try engine.handle(.start, env: env(5_001)) }
 }
@@ -269,6 +270,7 @@ private func env(_ time: Int, _ config: Config = .init()) -> Environment {
     config.breaks.short = ["S1", "S2"]
     config.breaks.long = ["L1", "L2"]
     var engine = Engine(now: 1_000, config: config, calendar: env(1_000, config).calendar)
+    #expect(engine.state.nextTask == "L1")
     _ = try engine.handle(.start, env: env(1_000, config))
     _ = engine.tick(env: env(1_060, config))
     _ = try engine.handle(.startBreak, env: env(1_061, config))
