@@ -221,11 +221,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     private func applyLoginItem(_ enabled: Bool) {
+        let service = SMAppService.mainApp
+        let before = loginItemStatus(service.status)
+        let action = LoginItemPolicy.action(enabled: enabled, status: before)
+        log("Launch at login: requested=\(enabled), before=\(before.rawValue), action=\(action.rawValue).")
         do {
-            if enabled && SMAppService.mainApp.status == .notRegistered { try SMAppService.mainApp.register() }
-            else if !enabled && SMAppService.mainApp.status != .notRegistered { try SMAppService.mainApp.unregister() }
-            if SMAppService.mainApp.status == .requiresApproval { log("Launch at login requires approval in System Settings → Login Items.") }
-        } catch { log("Launch at login: \(error)") }
+            switch action {
+            case .register: try service.register()
+            case .unregister: try service.unregister()
+            case .none: break
+            }
+        } catch {
+            let error = error as NSError
+            log("Launch at login: domain=\(error.domain), code=\(error.code), \(error.localizedDescription)")
+        }
+        let after = loginItemStatus(service.status)
+        log("Launch at login: after=\(after.rawValue).")
+        if after == .requiresApproval { log("Launch at login requires approval in System Settings → Login Items.") }
+    }
+
+    private func loginItemStatus(_ status: SMAppService.Status) -> LoginItemStatus {
+        switch status {
+        case .notRegistered: return .notRegistered
+        case .enabled: return .enabled
+        case .requiresApproval: return .requiresApproval
+        case .notFound: return .notFound
+        @unknown default: return .unknown
+        }
     }
 
     nonisolated func sound(_ sound: NSSound, didFinishPlaying flag: Bool) {

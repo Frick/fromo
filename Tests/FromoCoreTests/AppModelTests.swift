@@ -89,3 +89,16 @@ private func appState(_ phase: Phase) -> State {
     config.general.launchAtLogin = false
     #expect(try engine.handle(.reloadConfig, env: Environment(now: 1_001, calendar: calendar, config: config)).contains(.setLaunchAtLogin(false)))
 }
+
+@Test func loginRegistrationHandlesMissingServicesAndRespectsExistingApproval() {
+    #expect(LoginItemPolicy.action(enabled: true, status: .notRegistered) == .register)
+    #expect(LoginItemPolicy.action(enabled: true, status: .notFound) == .register)
+    #expect(LoginItemPolicy.action(enabled: true, status: .unknown) == .register)
+    #expect(LoginItemPolicy.action(enabled: true, status: .enabled) == .none)
+    #expect(LoginItemPolicy.action(enabled: true, status: .requiresApproval) == .none)
+    #expect(LoginItemPolicy.action(enabled: false, status: .enabled) == .unregister)
+    #expect(LoginItemPolicy.action(enabled: false, status: .requiresApproval) == .unregister)
+    #expect(LoginItemPolicy.action(enabled: false, status: .notRegistered) == .none)
+    #expect(LoginItemPolicy.action(enabled: false, status: .notFound) == .none)
+    #expect(LoginItemPolicy.action(enabled: false, status: .unknown) == .unregister)
+}
