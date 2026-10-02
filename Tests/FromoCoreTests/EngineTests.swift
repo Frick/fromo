@@ -80,6 +80,9 @@ private func env(_ time: Int, _ config: Config = .init()) -> Environment {
     config.breaks.short = ["C", "B", "A"]
     _ = try engine.handle(.reloadConfig, env: env(2_504, config))
     #expect(engine.state.rotation.short.index == 1)
+    config.breaks.short = ["C", "Renamed", "A"]
+    _ = try engine.handle(.reloadConfig, env: env(2_504, config))
+    #expect(engine.state.rotation.short.name == "Renamed")
     config.breaks.short = ["D", "C"]
     _ = try engine.handle(.reloadConfig, env: env(2_505, config))
     #expect(engine.state.rotation.short.name == "C")
@@ -139,6 +142,9 @@ private func env(_ time: Int, _ config: Config = .init()) -> Environment {
     var engine = Engine(now: midnight - 2_000, config: .init(), calendar: calendar)
     _ = try engine.handle(.notToday(true), env: env(midnight - 2_000))
     #expect(engine.state.nagsOffUntil == midnight)
+    _ = try engine.handle(.notToday(false), env: env(midnight - 1_999))
+    #expect(engine.state.nagsOffUntil == nil)
+    _ = try engine.handle(.notToday(true), env: env(midnight - 1_998))
     _ = try engine.handle(.start, env: env(midnight - 1_700))
     _ = engine.tick(env: env(midnight - 199))
     #expect(engine.state.completedToday == 1)
@@ -174,6 +180,7 @@ private func env(_ time: Int, _ config: Config = .init()) -> Environment {
     #expect(effects.contains(.notify("break_end")))
     #expect(!effects.contains(.playSound("break_end")))
     #expect(!effects.contains(.showAnswerPanel))
+    #expect(try engine.handle(.next, env: busy).isEmpty)
     _ = engine.tick(env: env(2_503))
     #expect(engine.state.inMeeting)
     _ = engine.tick(env: env(2_532))

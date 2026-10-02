@@ -157,7 +157,7 @@ public struct Engine: Sendable {
             case .workDone: return try handle(.startBreak, env: env)
             case .paused: return try handle(.resume, env: env)
             case .lunch: return try handle(.endLunch, env: env)
-            case .breakDone: return [.showAnswerPanel]
+            case .breakDone: return state.inMeeting ? [] : [.showAnswerPanel]
             default: throw EngineError("No next action while the countdown is running.")
             }
         case .restart where state.phase == .work || state.phase == .break || state.phase == .paused:
