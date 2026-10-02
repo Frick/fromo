@@ -52,6 +52,10 @@ public struct SettingsDraft: Sendable {
 
     public mutating func didSave(_ saved: Config) { baseline = saved }
 
+    public mutating func didFailSave(nowMilliseconds: Int) {
+        if validationError == nil && config != baseline { deadline = nowMilliseconds + 500 }
+    }
+
     @discardableResult
     public mutating func receive(_ external: Config) -> Bool {
         guard external != baseline else { return false }

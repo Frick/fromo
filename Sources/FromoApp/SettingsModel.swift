@@ -71,6 +71,7 @@ final class SettingsModel: ObservableObject {
             return true
         } catch {
             saveError = String(describing: error)
+            draft.didFailSave(nowMilliseconds: milliseconds)
             return false
         }
     }

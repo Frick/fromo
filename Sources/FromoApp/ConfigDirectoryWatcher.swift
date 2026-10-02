@@ -1,9 +1,10 @@
 import Foundation
-import Darwin
+import CoreServices
 
+// A directory stream observes both in-place file writes and editor temp-file renames.
 final class ConfigDirectoryWatcher: @unchecked Sendable {
     private let queue = DispatchQueue(label: "fromo.config-directory")
-    private var source: DispatchSourceFileSystemObject?
+    private var stream: FSEventStreamRef?
     private var pending: DispatchWorkItem?
     private var stopped = false
     private let path: String
@@ -17,27 +18,44 @@ final class ConfigDirectoryWatcher: @unchecked Sendable {
 
     private func start() {
         guard !stopped else { return }
-        let fd = Darwin.open(path, O_EVTONLY)
-        guard fd >= 0 else { report("Watch config directory: \(String(cString: strerror(errno)))"); return }
-        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete, .revoke], queue: queue)
-        source.setCancelHandler { Darwin.close(fd) }
-        source.setEventHandler { [weak self] in
-            guard let self, !self.stopped else { return }
-            self.pending?.cancel()
-            let work = DispatchWorkItem(qos: .unspecified, flags: []) { [weak self] in self?.changed() }
-            self.pending = work
-            self.queue.asyncAfter(deadline: .now() + .milliseconds(250), execute: work)
+        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
+                                          retain: nil, release: nil, copyDescription: nil)
+        let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagWatchRoot)
+        guard let stream = FSEventStreamCreate(nil, { _, context, _, _, _, _ in
+            guard let context else { return }
+            Unmanaged<ConfigDirectoryWatcher>.fromOpaque(context).takeUnretainedValue().scheduleReload()
+        }, &context, [path] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.0, flags) else {
+            report("Could not create the config-directory event stream.")
+            return
         }
-        self.source = source
-        source.resume()
+        FSEventStreamSetDispatchQueue(stream, queue)
+        if !FSEventStreamStart(stream) {
+            FSEventStreamInvalidate(stream)
+            FSEventStreamRelease(stream)
+            report("Could not start the config-directory event stream.")
+            return
+        }
+        self.stream = stream
+    }
+
+    private func scheduleReload() {
+        guard !stopped else { return }
+        pending?.cancel()
+        let work = DispatchWorkItem(qos: .unspecified, flags: []) { [weak self] in self?.changed() }
+        pending = work
+        queue.asyncAfter(deadline: .now() + .milliseconds(250), execute: work)
     }
 
     func stop() {
         queue.async { [self] in
             stopped = true
             pending?.cancel()
-            source?.cancel()
-            source = nil
+            if let stream {
+                FSEventStreamStop(stream)
+                FSEventStreamInvalidate(stream)
+                FSEventStreamRelease(stream)
+                self.stream = nil
+            }
         }
     }
 }

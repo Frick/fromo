@@ -55,6 +55,18 @@ import Testing
     #expect(draft.takeWrite(nowMilliseconds: 2_200) == nil)
 }
 
+@Test func failedSaveRetainsDirtyDraftForExplicitRetry() {
+    var draft = SettingsDraft(config: Config())
+    var edited = Config()
+    edited.timer.dailyGoal = 10
+    draft.edit(edited, nowMilliseconds: 1_000)
+    #expect(draft.takeWrite(nowMilliseconds: 1_500)?.timer.dailyGoal == 10)
+    draft.didFailSave(nowMilliseconds: 1_500)
+    #expect(draft.takeWrite(nowMilliseconds: 1_501, force: true)?.timer.dailyGoal == 10)
+    draft.didSave(edited)
+    #expect(draft.takeWrite(nowMilliseconds: 3_000) == nil)
+}
+
 @Test func orderedListsAndWorkHoursEditWithoutSwiftUI() {
     var values = ["A", "B", "C", "D"]
     SettingsLists.move(&values, from: IndexSet([0, 2]), to: 4)
