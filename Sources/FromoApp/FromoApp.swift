@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private var loginStatus: LoginItemStatus = .notRegistered
     private var notificationsReady = false
     private var pendingNotifications: [NotificationModel] = []
+    private var probeSchedule = ProbeSchedule()
+    private var probeErrors: Set<String> = []
 
     private var now: Int { Int(Date().timeIntervalSince1970) }
 
@@ -33,8 +35,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                 let configStore = ConfigStore(url: paths.configFile)
                 if !FileManager.default.fileExists(atPath: paths.configFile.path) { try configStore.write(Config()) }
                 notifications.delegate = self
+                let probes = EnvironmentProbes.read()
+                reportProbeErrors(probes.errors)
+                _ = probeSchedule.shouldRefresh(at: now)
                 host = try EngineHost(paths: paths, calendar: .current, pid: Int(ProcessInfo.processInfo.processIdentifier), now: now,
                                       settingsAvailable: true, recoverInvalidConfigAtLaunch: true,
+                                      probes: probes.snapshot,
                                       eventSink: { [weak self] effect, snapshot in
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated { self?.execute(effect, snapshot: snapshot) }
@@ -92,6 +98,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
+                    if self.probeSchedule.shouldRefresh(at: self.now) {
+                        let probes = EnvironmentProbes.read()
+                        self.reportProbeErrors(probes.errors)
+                        self.host?.updateProbes(probes.snapshot, now: self.now)
+                    }
                     self.host?.tick(now: self.now)
                     self.refresh()
                 }
@@ -188,6 +199,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         case .notify(let kind):
             let model = NotificationModel(kind: kind, state: snapshot.state, config: snapshot.config)
             enqueue(model)
+        case .nag(let message):
+            enqueue(NotificationModel(kind: "nag", state: snapshot.state, config: snapshot.config, detail: message))
         case .configError(let message):
             enqueue(NotificationModel(kind: "config_error", state: snapshot.state, config: snapshot.config, detail: message))
         case .clearConfigError:
@@ -257,7 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         let content = UNMutableNotificationContent()
         content.title = model.title
         content.body = model.body
-        content.categoryIdentifier = model.kind
+        content.categoryIdentifier = model.category
         notifications.add(UNNotificationRequest(identifier: model.kind, content: content, trigger: nil)) { [weak self] error in
             if let error {
                 let message = "Notification delivery: \(error)"
@@ -315,10 +328,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     private func installNotificationCategories(_ snapshot: HostSnapshot) {
-        let categories = ["work_end", "break_end", "lunch_end", "state_corrupt", "config_error"].map { kind in
+        let categories = ["work_end", "break_end", "lunch_end", "state_corrupt", "config_error", "nag_ready", "nag_waiting"].map { kind in
             let model = NotificationModel(kind: kind, state: snapshot.state, config: snapshot.config)
             let actions = model.actions.map { UNNotificationAction(identifier: $0.id, title: $0.title, options: []) }
-            return UNNotificationCategory(identifier: kind, actions: actions, intentIdentifiers: [], options: [])
+            return UNNotificationCategory(identifier: model.category, actions: actions, intentIdentifiers: [], options: [])
         }
         notifications.setNotificationCategories(Set(categories))
     }
@@ -398,6 +411,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     private func log(_ message: String) { try? DiagnosticsStore(url: paths.diagnosticFile).append(message) }
+    private func reportProbeErrors(_ errors: [String]) {
+        for error in errors where probeErrors.insert(error).inserted { log(error) }
+    }
     private func logSketchybar(_ message: String) {
         if !sketchybarFailed { sketchybarFailed = true; log(message) }
     }

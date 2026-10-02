@@ -65,9 +65,11 @@ public struct NotificationModel: Sendable {
     public var title: String
     public var body: String
     public var actions: [NotificationActionModel]
+    public var category: String
 
     public init(kind: String, state: State, config: Config, detail: String? = nil) {
         self.kind = kind
+        category = kind
         actions = []
         switch kind {
         case "work_end":
@@ -86,6 +88,13 @@ public struct NotificationModel: Sendable {
             title = "Config error"
             body = (detail ?? "Invalid config.").components(separatedBy: "\n")[0]
             actions = [NotificationActionModel(id: "open_config", title: "Open Config", command: .openConfig)]
+        case "nag", "nag_ready", "nag_waiting":
+            let ready = kind == "nag_ready" || (kind == "nag" && state.phase == .ready)
+            category = ready ? "nag_ready" : "nag_waiting"
+            title = detail ?? "Continue your timer."
+            body = StatePresentation.summary(state, now: state.updatedAt).components(separatedBy: "\n")[0]
+            actions = [NotificationActionModel(id: ready ? "nag_start" : "continue", title: ready ? "Start Work" : "Continue", command: ready ? .start : .next),
+                       NotificationActionModel(id: "not_today", title: "Not Today", command: .notToday(true))]
         default:
             title = "Fromo"; body = kind
         }
@@ -94,6 +103,7 @@ public struct NotificationModel: Sendable {
     public static func command(for action: String, category: String = "") -> Command? {
         switch action {
         case "start_break": return .startBreak
+        case "nag_start": return .start
         case "continue": return .next
         case "not_today": return .notToday(true)
         case "open_config": return .openConfig

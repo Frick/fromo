@@ -73,3 +73,18 @@ file and can remove its comments. Nag/probe behavior is checked in M5.
 
 1. Install with `sh scripts/install.sh` and open Settings. Resize the window down to its minimum width, then click General, Timer, Breaks, Work Hours, Nags, Sounds and SketchyBar in turn. Expected: the window opens wider and all seven native tabs remain directly clickable across the top, including at minimum width; selecting one displays its pane without an overflow menu.
 2. Change a setting and switch panes, then return to it. Expected: the edit persists through the pane switch and is written automatically as before.
+
+# M5 — Nags and probes (`v0.5.0`)
+
+Core eligibility/cooldown/cursor tests, debug IPC, CI, signing and downloads are
+verified by the agent. These steps check actual Mac input/device status and native
+notifications. Keep the original settings values so they can be restored afterward.
+
+1. Install with `sh scripts/install.sh`. With no call active, run `fromo status --debug`. Expected: idle seconds, camera, microphone, meeting status, work-hours status, eligibility and next-nag epoch are printed; no camera/microphone permission dialog appears. Note whether the external microphone reports in use; leave microphone meeting detection off until this is understood.
+2. In Settings, temporarily enable nags, set interval and idle threshold to one minute, and set today's work-hours window to include the current time. Leave the timer ready and keep using the Mac. Expected: a nag appears after a full interval, plays the configured sound, and offers Start Work and Not Today. Start Work starts a countdown; no nags occur while it runs.
+3. Pause the countdown and remain active for one interval. Expected: a waiting-message nag offers Continue and Not Today; Continue resumes the paused timer.
+4. Return to ready, then leave the Mac untouched for more than one idle-threshold minute and another interval. Expected: no idle-time nags. Resume input and run debug; expected: idle seconds drop and a full interval remains before the next nag.
+5. Temporarily set work/short-break durations to one minute. Start a video call with the camera on and run debug after the next five-second probe refresh. Expected: camera/in-meeting are true, nags stop, and SketchyBar shows time only. Start work, let it expire, then run `fromo break` and `fromo end-break` while on the call; expected: the break notification posts, its sound is muted, and the answer panel is held back. Turn the camera off; expected: meeting status stays true for 30 quiet seconds, then the panel appears and a full nag interval is granted. Answer the panel before continuing.
+6. In ready/waiting, choose Not Today from a nag or menu. Expected: no further nags, and debug reports Not Today suppression. Turn it off; expected: nags can resume after the normal interval. Enter lunch; expected: no nags while lunch is active.
+7. If the no-call microphone result from step 1 was false, temporarily enable microphone meeting detection and use an input-only audio session. Expected: debug reports microphone/in-meeting true and suppresses nags; stopping input grants the same 30-second meeting grace. If it reports permanently in use, retain the default off setting.
+8. Restore the original timer/work-hours/nag/meeting settings. Expected: debug and subsequent phases/nags reflect those values without restarting the app.

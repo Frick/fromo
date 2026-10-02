@@ -18,14 +18,17 @@ public final class EngineHost: @unchecked Sendable {
     private let eventSink: (@Sendable (Effect, HostSnapshot) -> Void)?
     private var reloadPolicy = ConfigReloadPolicy()
     private let settingsAvailable: Bool
+    private var probes: ProbeSnapshot
 
     public init(paths: Paths, calendar: Calendar, pid: Int, now: Int,
                 settingsAvailable: Bool = false, recoverInvalidConfigAtLaunch: Bool = false,
+                probes: ProbeSnapshot = ProbeSnapshot(),
                 eventSink: (@Sendable (Effect, HostSnapshot) -> Void)? = nil,
                 emit: @escaping @Sendable (Effect) -> Void) throws {
         self.paths = paths; self.calendar = calendar; self.emit = emit
         self.eventSink = eventSink
         self.settingsAvailable = settingsAvailable
+        self.probes = probes
         var startupWarnings: [String] = []
         do {
             let document = try ConfigStore(url: paths.configFile).read()
@@ -48,13 +51,17 @@ public final class EngineHost: @unchecked Sendable {
     }
 
     private func environment(_ now: Int) -> Environment {
-        Environment(now: now, calendar: calendar, config: config)
+        Environment(now: now, calendar: calendar, config: config, idleSeconds: probes.idleSeconds,
+                    cameraInUse: probes.cameraInUse, micInUse: probes.microphoneInUse)
     }
 
     public func handle(_ request: IPCRequest, now: Int) -> IPCResponse {
         queue.sync {
             do {
                 guard request.v == 1 else { throw IPCError("Unsupported protocol version.") }
+                if request.cmd == "debug" {
+                    return IPCResponse(ok: true, state: engine.state, debug: engine.debug(env: environment(now)))
+                }
                 try execute(engine.tick(env: environment(now)))
                 if request.cmd == "ping" { return IPCResponse(ok: true, state: engine.state) }
                 let command = try request.command()
@@ -131,6 +138,14 @@ public final class EngineHost: @unchecked Sendable {
         queue.sync {
             do { try execute(engine.tick(env: environment(now))) }
             catch { emit(.notify("io_error: \(error)")) }
+        }
+    }
+
+    public func updateProbes(_ snapshot: ProbeSnapshot, now: Int) {
+        queue.sync {
+            probes = snapshot
+            do { try execute(engine.tick(env: environment(now))) }
+            catch { try? execute([.logDiagnostic("Probe update: \(error)")]) }
         }
     }
 

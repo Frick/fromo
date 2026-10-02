@@ -29,4 +29,5 @@ sh scripts/test-sketchybar.sh
 The integration harness injects a fixed epoch into the headless shell and prepares
 synthetic persisted states to exercise expiry without sleeping. SketchyBar tests
 stub its commands and clock and compare the exact argument list for every phase.
-The `stats` command is reserved for M6, and `status --debug` for M5.
+`fromo status --debug` queries the engine's cached probes and nag policy;
+`--debug --json` returns the same details as JSON. The `stats` command is reserved for M6.
