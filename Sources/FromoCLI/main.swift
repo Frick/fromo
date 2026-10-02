@@ -15,7 +15,9 @@ struct CLIFailure: Error {
 func terminate(_ code: Int32) -> Never { exit(code) }
 
 func paths() -> Paths {
-    Paths(environment: ProcessInfo.processInfo.environment, home: NSHomeDirectory())
+    let environment = ProcessInfo.processInfo.environment
+    let explicit = ["XDG_CONFIG_HOME", "XDG_STATE_HOME"].allSatisfy { !(environment[$0] ?? "").isEmpty }
+    return Paths(environment: environment, home: explicit ? "" : NSHomeDirectory())
 }
 
 func control(_ verb: String, args: IPCArguments? = nil) throws {
@@ -160,7 +162,7 @@ struct Headless: ParsableCommand {
         let variables = ProcessInfo.processInfo.environment
         for key in ["XDG_CONFIG_HOME", "XDG_STATE_HOME"] {
             guard let path = variables[key],
-                  URL(fileURLWithPath: path).standardizedFileURL.path.hasPrefix(FileManager.default.temporaryDirectory.standardizedFileURL.path + "/") else {
+                  URL(fileURLWithPath: path).resolvingSymlinksInPath().path.hasPrefix(FileManager.default.temporaryDirectory.resolvingSymlinksInPath().path + "/") else {
                 throw CLIFailure(message: "Headless mode requires \(key) inside the temporary directory.", code: 64)
             }
         }

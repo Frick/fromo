@@ -56,6 +56,7 @@ import Testing
     calendar.timeZone = TimeZone(secondsFromGMT: 0)!
     let host = try EngineHost(paths: paths, calendar: calendar, pid: 99, now: 1_000, emit: { _ in })
     #expect(host.handle(IPCRequest(cmd: "start"), now: 1_000).ok)
+    #expect(host.handle(IPCRequest(cmd: "extend", args: .init(minutes: Int.max / 60)), now: 1_001).code == "rejected")
     #expect(host.handle(IPCRequest(cmd: "start"), now: 1_001).code == "rejected")
     host.tick(now: 2_500)
     #expect(host.handle(IPCRequest(cmd: "start_break"), now: 2_501).state?.task == "Pushups")
@@ -63,4 +64,40 @@ import Testing
     #expect(host.handle(IPCRequest(cmd: "answer", args: .init(did: true, startNext: false)), now: 2_503).state?.phase == .ready)
     #expect(try StateStore(url: paths.stateFile).read().rotation.short.name == "Squats")
     #expect(host.handle(IPCRequest(cmd: "settings"), now: 2_504).code == "rejected")
+}
+
+@Test func cleanStopRetainsCountdownForRelaunch() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    var engine = Engine(now: 1_000, config: .init(), calendar: calendar)
+    _ = try engine.handle(.start, env: Environment(now: 1_000, calendar: calendar, config: .init()))
+    _ = try engine.handle(.stop, env: Environment(now: 1_010, calendar: calendar, config: .init()))
+    #expect(engine.state.phase == .stopped)
+    var restored = Engine(state: engine.state)
+    _ = restored.restore(env: Environment(now: 1_100, calendar: calendar, config: .init()), pid: 123)
+    #expect(restored.state.phase == .work)
+    #expect(restored.state.endsAt == 2_500)
+    #expect(restored.state.pid == 123)
+}
+
+@Test func presentationUsesInjectedTimeAndAllowsMinutesBeyondFiftyNine() {
+    #expect(StatePresentation.time(-1) == "00:00")
+    #expect(StatePresentation.time(3_600) == "60:00")
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    var state = State(now: 1_000, config: .init(), calendar: calendar)
+    state.phase = .work
+    state.endsAt = 2_122
+    #expect(StatePresentation.summary(state, now: 1_000) == "Work · 18:42 left\nToday: 0 of 8")
+}
+
+@Test func socketNeverReplacesAnOrdinaryFileAndRejectsOverlongPaths() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("fromo.sock")
+    try Data("synthetic file".utf8).write(to: url)
+    #expect(throws: IPCError.self) { try IPCServer(path: url.path) }
+    #expect(try String(contentsOf: url, encoding: .utf8) == "synthetic file")
+    #expect(throws: IPCError.self) { try IPCServer(path: "/tmp/" + String(repeating: "é", count: 60)) }
 }

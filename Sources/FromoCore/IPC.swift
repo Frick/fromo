@@ -89,6 +89,14 @@ public enum IPCCodec {
 }
 
 private enum UnixSocket {
+    struct Deadline {
+        private let end = DispatchTime.now().uptimeNanoseconds + 2_000_000_000
+        var milliseconds: Int32 {
+            let now = DispatchTime.now().uptimeNanoseconds
+            return now >= end ? 0 : Int32((end - now + 999_999) / 1_000_000)
+        }
+    }
+
     static func create() throws -> Int32 {
         #if os(Linux)
         let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
@@ -97,6 +105,7 @@ private enum UnixSocket {
         #endif
         guard fd >= 0 else { throw failure("Create socket") }
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+        _ = fcntl(fd, F_SETFL, O_NONBLOCK)
         #if !os(Linux)
         var on: Int32 = 1
         _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout.size(ofValue: on)))
@@ -118,14 +127,27 @@ private enum UnixSocket {
     }
 
     static func connectTo(_ path: String) throws -> Int32 {
-        let fd = try create()
         var address = try address(path)
+        let fd = try create()
         let result = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
-        if result < 0 { let error = failure("Engine not running or socket unreachable"); _ = close(fd); throw error }
+        if result < 0 {
+            if errno == EINPROGRESS {
+                do {
+                    guard try ready(fd, events: Int16(POLLOUT)) else { throw IPCError("Socket connect timed out after 2 seconds.") }
+                    var code: Int32 = 0
+                    var length = socklen_t(MemoryLayout.size(ofValue: code))
+                    guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &code, &length) == 0, code == 0 else {
+                        throw IPCError("Engine not running or socket unreachable.", errnoCode: code)
+                    }
+                } catch { _ = close(fd); throw error }
+            } else {
+                let error = failure("Engine not running or socket unreachable"); _ = close(fd); throw error
+            }
+        }
         return fd
     }
 
@@ -144,19 +166,24 @@ private enum UnixSocket {
         return result > 0
     }
 
-    static func readLine(_ fd: Int32) throws -> Data {
+    static func readLine(_ fd: Int32, deadline: Deadline = Deadline()) throws -> Data {
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 4_096)
         while data.count <= 1_048_576 {
-            guard try ready(fd, events: Int16(POLLIN)) else { throw IPCError("Socket timed out after 2 seconds.") }
+            guard deadline.milliseconds > 0,
+                  try ready(fd, events: Int16(POLLIN), timeout: deadline.milliseconds) else { throw IPCError("Socket timed out after 2 seconds.") }
             let count = recv(fd, &buffer, buffer.count, 0)
             if count == 0 {
                 if data.isEmpty { return data }
                 throw IPCError("Socket closed before newline.")
             }
-            if count < 0 { throw failure("Read socket") }
+            if count < 0 {
+                if errno == EAGAIN || errno == EINTR { continue }
+                throw failure("Read socket")
+            }
             if let newline = buffer[..<count].firstIndex(of: 10) {
                 data.append(contentsOf: buffer[..<newline])
+                guard data.count <= 1_048_576 else { throw IPCError("Socket message exceeds 1 MiB.") }
                 return data
             }
             data.append(contentsOf: buffer[..<count])
@@ -164,16 +191,18 @@ private enum UnixSocket {
         throw IPCError("Socket message exceeds 1 MiB.")
     }
 
-    static func write(_ data: Data, to fd: Int32) throws {
+    static func write(_ data: Data, to fd: Int32, deadline: Deadline = Deadline()) throws {
         try data.withUnsafeBytes { raw in
             var offset = 0
             while offset < raw.count {
-                guard try ready(fd, events: Int16(POLLOUT)) else { throw IPCError("Socket timed out after 2 seconds.") }
+                guard deadline.milliseconds > 0,
+                      try ready(fd, events: Int16(POLLOUT), timeout: deadline.milliseconds) else { throw IPCError("Socket timed out after 2 seconds.") }
                 #if os(Linux)
                 let count = send(fd, raw.baseAddress!.advanced(by: offset), raw.count - offset, Int32(MSG_NOSIGNAL))
                 #else
                 let count = send(fd, raw.baseAddress!.advanced(by: offset), raw.count - offset, 0)
                 #endif
+                if count < 0 && (errno == EAGAIN || errno == EINTR) { continue }
                 guard count > 0 else { throw failure("Write socket") }
                 offset += count
             }
@@ -183,10 +212,11 @@ private enum UnixSocket {
 
 public enum IPCClient {
     public static func request(_ request: IPCRequest, path: String) throws -> IPCResponse {
+        let deadline = UnixSocket.Deadline()
         let fd = try UnixSocket.connectTo(path)
         defer { _ = close(fd) }
-        try UnixSocket.write(IPCCodec.encode(request), to: fd)
-        return try IPCCodec.decode(IPCResponse.self, from: UnixSocket.readLine(fd))
+        try UnixSocket.write(IPCCodec.encode(request), to: fd, deadline: deadline)
+        return try IPCCodec.decode(IPCResponse.self, from: UnixSocket.readLine(fd, deadline: deadline))
     }
 }
 
@@ -203,7 +233,13 @@ public final class IPCServer: @unchecked Sendable {
             throw IPCError("An engine is already running.")
         } catch let error as IPCError {
             guard error.errnoCode == ENOENT || error.errnoCode == ECONNREFUSED else { throw error }
-            if error.errnoCode == ECONNREFUSED { _ = unlink(path) }
+            if error.errnoCode == ECONNREFUSED {
+                let attributes = try FileManager.default.attributesOfItem(atPath: path)
+                guard attributes[.type] as? FileAttributeType == .typeSocket else {
+                    throw IPCError("Socket path exists and is not a socket.")
+                }
+                _ = unlink(path)
+            }
         }
         try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
         fd = try UnixSocket.create()
@@ -225,6 +261,8 @@ public final class IPCServer: @unchecked Sendable {
         let client = accept(fd, nil, nil)
         guard client >= 0 else { throw UnixSocket.failure("Accept socket") }
         defer { _ = DarwinOrGlibcClose(client) }
+        _ = fcntl(client, F_SETFL, O_NONBLOCK)
+        _ = fcntl(client, F_SETFD, FD_CLOEXEC)
         #if !os(Linux)
         var on: Int32 = 1
         _ = setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout.size(ofValue: on)))
@@ -239,8 +277,10 @@ public final class IPCServer: @unchecked Sendable {
     }
 
     public func close(removeSocket: Bool = true) {
-        if fd >= 0 { _ = DarwinOrGlibcClose(fd); fd = -1 }
-        if removeSocket { _ = unlink(path) }
+        if fd >= 0 {
+            _ = DarwinOrGlibcClose(fd); fd = -1
+            if removeSocket { _ = unlink(path) }
+        }
     }
     deinit { if fd >= 0 { _ = DarwinOrGlibcClose(fd); _ = unlink(path) } }
 }

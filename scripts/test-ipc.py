@@ -51,7 +51,7 @@ def stop(process):
 
 
 with tempfile.TemporaryDirectory(prefix="fromo-") as root:
-    env = dict(os.environ, XDG_CONFIG_HOME=root + "/c", XDG_STATE_HOME=root + "/s", TZ="UTC")
+    env = dict(os.environ, HOME=root, XDG_CONFIG_HOME=root + "/c", XDG_STATE_HOME=root + "/s", TZ="UTC")
     state_path = Path(root) / "s/fromo/state.json"
     config_path = Path(root) / "c/fromo/config.toml"
     socket_path = str(Path(root) / "s/fromo/fromo.sock")
@@ -78,6 +78,12 @@ with tempfile.TemporaryDirectory(prefix="fromo-") as root:
         before = state_path.read_bytes()
         run(env, "engine", "--headless", "--now", str(NOW), code=2)
         assert state_path.read_bytes() == before, "second instance wrote state"
+        for payload, code in [(b'{broken\n', "usage"), (b'{"v":2,"cmd":"start"}\n', "usage")]:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.settimeout(2)
+                client.connect(socket_path)
+                client.sendall(payload)
+                assert json.loads(client.recv(4096))["code"] == code
         run(env, "start")
         state = json.loads(run(env, "status", "--json"))
         assert state["phase"] == "work" and state["ends_at"] == NOW + 60
@@ -96,12 +102,22 @@ with tempfile.TemporaryDirectory(prefix="fromo-") as root:
         run(env, "not-today", "--off")
         run(env, "settings", code=1)
         run(env, "answer", "--did", code=1)
+        run(env, "start")
     finally:
         stop(process)
     stopped = json.loads(state_path.read_text())
     assert stopped["phase"] == "stopped"
+    assert stopped["stopped_phase"] == "work"
     assert run(env, "status").strip() == "not running"
     assert not Path(socket_path).exists()
+
+    process = launch(env)
+    try:
+        assert json.loads(run(env, "status", "--json"))["phase"] == "work"
+        run(env, "reset")
+    finally:
+        stop(process)
+    stopped = json.loads(state_path.read_text())
 
     # Seed an expired synthetic work phase before launch, injecting a fixed clock.
     state = dict(stopped, phase="work", stopped_phase=None, started_at=NOW - 60,

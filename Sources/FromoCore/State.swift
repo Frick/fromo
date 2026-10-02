@@ -142,7 +142,7 @@ public struct State: Codable, Equatable, Sendable {
         try nullable(stoppedPhase, .stoppedPhase)
     }
 
-    public init(now: Int, config: Config, calendar: Calendar, pid: Int = Int(ProcessInfo.processInfo.processIdentifier)) {
+    public init(now: Int, config: Config, calendar: Calendar, pid: Int = 0) {
         self.pid = pid
         self.updatedAt = now
         self.date = Self.localDate(now, calendar: calendar)
