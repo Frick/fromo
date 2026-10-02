@@ -31,6 +31,11 @@ private func temporaryPaths() throws -> Paths {
     #expect(recovered.recovered)
     #expect(recovered.state.phase == .ready)
     #expect(FileManager.default.fileExists(atPath: paths.stateDirectory.appendingPathComponent("state.json.corrupt-2000").path))
+    // Valid JSON with impossible phase data is also corrupt, not a force-unwrap crash.
+    state.phase = .work
+    state.startedAt = nil
+    try store.write(state)
+    #expect(try store.load(now: 3_000, config: Config(), calendar: calendar).recovered)
 }
 
 @Test func csvQuotesAndUsesStartDate() throws {

@@ -56,18 +56,19 @@ public struct Engine: Sendable {
 
     public mutating func restore(env: Environment, pid: Int? = nil, recovered: Bool = false) -> [Effect] {
         var effects: [Effect] = []
+        let original = state
         if state.phase == .stopped {
             state.phase = state.stoppedPhase ?? .ready
             state.stoppedPhase = nil
-            effects += changed(at: env.now)
         }
-        if let pid, pid != state.pid {
-            state.pid = pid
-            effects += changed(at: env.now)
-        }
+        state.rotation.short.reconcile(env.config.breaks.short)
+        state.rotation.long.reconcile(env.config.breaks.long)
+        state.dailyGoal = env.config.timer.dailyGoal
+        state.updateNextTask(config: env.config)
+        if let pid { state.pid = pid }
+        if state != original || recovered { effects += changed(at: env.now) }
         if recovered {
             effects.append(.notify("state_corrupt"))
-            if pid == nil { effects += changed(at: env.now) }
         }
         effects += tick(env: env)
         if state.phase == .breakDone && !state.inMeeting && !effects.contains(.showAnswerPanel) {

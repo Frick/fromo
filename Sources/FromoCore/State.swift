@@ -165,4 +165,39 @@ public struct State: Codable, Equatable, Sendable {
         else { count = cycleCount + 1 }
         nextTask = (count >= config.timer.longBreakEvery ? rotation.long : rotation.short).name
     }
+
+    public func validateForEngine() throws {
+        func require(_ valid: Bool) throws {
+            if !valid { throw EngineError("Invalid persisted timer state.") }
+        }
+        try require(version == 1 && completedToday >= 0 && completedToday < Int.max && cycleCount >= 0 && cycleCount < Int.max)
+        let active = phase == .stopped ? (stoppedPhase ?? .ready) : phase
+        try require(active != .stopped)
+        switch active {
+        case .work, .break:
+            try require(startedAt != nil && endsAt != nil && plannedSeconds != nil)
+        case .workDone, .breakDone:
+            try require(startedAt != nil && endedAt != nil && plannedSeconds != nil)
+        case .paused:
+            try require(pausedPhase == .work || pausedPhase == .break)
+            try require(startedAt != nil && remaining != nil && plannedSeconds != nil)
+        case .lunch:
+            try require(lunch != nil)
+            if let lunch {
+                try require(lunch.returnPhase != .lunch && lunch.returnPhase != .stopped)
+                if [.work, .break, .paused].contains(lunch.returnPhase) {
+                    try require(lunch.returnRemaining != nil && startedAt != nil && plannedSeconds != nil)
+                }
+                if lunch.returnPhase == .paused { try require(pausedPhase == .work || pausedPhase == .break) }
+                if [.workDone, .breakDone].contains(lunch.returnPhase) {
+                    try require(startedAt != nil && endedAt != nil && plannedSeconds != nil)
+                }
+            }
+        default: break
+        }
+        try require((remaining ?? 0) >= 0 && (plannedSeconds ?? 0) >= 0)
+        if active == .break || active == .breakDone || (active == .paused && pausedPhase == .break) {
+            try require(breakKind != nil)
+        }
+    }
 }

@@ -66,3 +66,16 @@ private func appState(_ phase: Phase) -> State {
     try store.append("synthetic error")
     #expect(try String(contentsOf: store.url, encoding: .utf8) == "synthetic error\n")
 }
+
+@Test func launchReconcilesEditedTaskListsWithoutChangingRunningDeadline() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    var engine = Engine(now: 1_000, config: .init(), calendar: calendar)
+    _ = try engine.handle(.start, env: Environment(now: 1_000, calendar: calendar, config: .init()))
+    var config = Config()
+    config.breaks.short = ["Synthetic task"]
+    config.timer.workMinutes = 1
+    _ = engine.restore(env: Environment(now: 1_100, calendar: calendar, config: config), pid: 123)
+    #expect(engine.state.rotation.short.name == "Synthetic task")
+    #expect(engine.state.endsAt == 2_500)
+}
