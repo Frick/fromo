@@ -157,3 +157,13 @@ private func dayEnv(_ text: String, idle: Int = 0, camera: Bool = false, config:
     let state = State(now: dayTime("2026-10-05T09:00:00Z"), config: Config(), calendar: dayCalendar)
     #expect(MenuModel(state: state, config: Config(), now: state.updatedAt).endDay.enabled)
 }
+
+@Test func wakingBeforeWorkHoursDoesNotCountYesterdayCompletionAsToday() throws {
+    var engine = Engine(now: dayTime("2026-10-05T17:30:00Z"), config: Config(), calendar: dayCalendar)
+    _ = try engine.handle(.start, env: dayEnv("2026-10-05T17:30:00Z"))
+    _ = engine.tick(env: dayEnv("2026-10-06T08:00:00Z"))
+    #expect(engine.state.completedToday == 0)
+    _ = engine.tick(env: dayEnv("2026-10-06T09:00:00Z"))
+    #expect(engine.state.phase == .ready)
+    #expect(engine.state.completedToday == 0)
+}

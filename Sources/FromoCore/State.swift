@@ -181,6 +181,12 @@ public struct State: Codable, Equatable, Sendable {
         try require(version == 1 && completedToday >= 0 && completedToday < Int.max && cycleCount >= 0 && cycleCount < Int.max)
         let active = phase == .stopped ? (stoppedPhase ?? .ready) : phase
         try require(active != .stopped)
+        if let workdayDate {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+            try require((try? StatsPeriod.date(workdayDate, calendar: calendar)) != nil)
+        }
+        if dayClosedAt != nil { try require(active == .ready) }
         switch active {
         case .work, .break:
             try require(startedAt != nil && endsAt != nil && plannedSeconds != nil)

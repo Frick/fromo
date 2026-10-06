@@ -132,7 +132,7 @@ public struct Engine: Sendable {
             let deadline = state.endsAt!
             effects.append(.appendLog(row(kind: "work", outcome: "completed", end: deadline)))
             state.phase = .workDone
-            state.completedToday += 1
+            if State.localDate(deadline, calendar: env.calendar) == state.date { state.completedToday += 1 }
             state.cycleCount += 1
             state.endsAt = nil
             state.endedAt = deadline
