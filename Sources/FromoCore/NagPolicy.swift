@@ -50,6 +50,7 @@ public enum NagPolicy {
     public static func evaluate(state: State, env: Environment, lastSuppressedAt: Int?) -> NagEvaluation {
         var reasons: [String] = []
         if !env.config.nags.enabled { reasons.append("nags disabled") }
+        if state.dayClosedAt != nil { reasons.append("day is closed") }
         if let until = state.nagsOffUntil, until > env.now { reasons.append("Not Today") }
         if !inWorkHours(env: env) { reasons.append("outside work hours") }
         if Double(env.idleSeconds) >= Double(env.config.nags.idleThresholdMinutes) * 60 { reasons.append("idle") }
@@ -84,6 +85,9 @@ public struct EngineDebug: Codable, Sendable {
     public var nextNagAt: Int?
     public var lastSuppressedAt: Int?
     public var reasons: [String]
+    public var workdayDate: String?
+    public var dayClosedAt: Int?
+    public var dayEndIdleMinutes: Int?
 
     public var summary: String {
         """
@@ -97,6 +101,9 @@ public struct EngineDebug: Codable, Sendable {
         Nag due: \(nagDue)
         Next nag (epoch): \(nextNagAt.map(String.init) ?? "none")
         Suppression: \(reasons.isEmpty ? "none" : reasons.joined(separator: ", "))
+        Workday: \(workdayDate ?? "unknown")
+        Day closed: \(dayClosedAt != nil)
+        End-day idle minutes: \(dayEndIdleMinutes.map(String.init) ?? "unknown")
         """
     }
 }

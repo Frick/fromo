@@ -9,7 +9,7 @@ public enum StatePresentation {
     public static func summary(_ state: State, now: Int) -> String {
         let activity: String
         switch state.phase {
-        case .ready: activity = "Ready"
+        case .ready: activity = state.dayClosedAt == nil ? "Ready" : "Day done"
         case .work: activity = "Work · \(time((state.endsAt ?? now) - now)) left"
         case .workDone: activity = "Waiting for break · +\(time(now - (state.endedAt ?? now)))"
         case .break: activity = "Break · \(state.task ?? "Break") · \(time((state.endsAt ?? now) - now))"

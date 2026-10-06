@@ -76,6 +76,7 @@ public struct Config: Codable, Equatable, Sendable {
             ("timer.extend_minutes", timer.extendMinutes),
             ("timer.lunch_minutes", timer.lunchMinutes),
             ("nags.interval_minutes", nags.intervalMinutes),
+            ("general.day_end_idle_minutes", general.dayEndIdleMinutes),
         ] where value <= 0 || value > Int.max / 60 {
             throw ConfigError("\(name) must be positive and fit in seconds")
         }
@@ -184,6 +185,10 @@ public struct SketchyBarConfig: Codable, Equatable, Sendable {
 
 public struct GeneralConfig: Codable, Equatable, Sendable {
     public var launchAtLogin = true
+    public var dayEndIdleMinutes = 60
     public init() {}
-    enum CodingKeys: String, CodingKey { case launchAtLogin = "launch_at_login" }
+    enum CodingKeys: String, CodingKey {
+        case launchAtLogin = "launch_at_login"
+        case dayEndIdleMinutes = "day_end_idle_minutes"
+    }
 }

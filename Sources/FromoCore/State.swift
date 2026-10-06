@@ -100,12 +100,15 @@ public struct State: Codable, Equatable, Sendable {
     // A resumed or extended session needs its final planned length for CSV logging.
     public var plannedSeconds: Int?
     public var stoppedPhase: Phase?
+    public var workdayDate: String?
+    public var dayOpenedAt: Int?
+    public var dayClosedAt: Int?
 
     enum CodingKeys: String, CodingKey {
         case version, pid, updatedAt, date, phase, breakKind, startedAt, endsAt, endedAt
         case pausedPhase, remaining, task, nextTask, lunch, completedToday, dailyGoal
         case cycleCount, rotation, inMeeting, nagsOffUntil, phaseEnteredAt, lastNagAt
-        case nagCursor, plannedSeconds, stoppedPhase
+        case nagCursor, plannedSeconds, stoppedPhase, workdayDate, dayOpenedAt, dayClosedAt
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -140,12 +143,17 @@ public struct State: Codable, Equatable, Sendable {
         try nullable(lastNagAt, .lastNagAt)
         try nullable(plannedSeconds, .plannedSeconds)
         try nullable(stoppedPhase, .stoppedPhase)
+        try nullable(workdayDate, .workdayDate)
+        try nullable(dayOpenedAt, .dayOpenedAt)
+        try nullable(dayClosedAt, .dayClosedAt)
     }
 
     public init(now: Int, config: Config, calendar: Calendar, pid: Int = 0) {
         self.pid = pid
         self.updatedAt = now
         self.date = Self.localDate(now, calendar: calendar)
+        self.workdayDate = self.date
+        self.dayOpenedAt = now
         self.dailyGoal = config.timer.dailyGoal
         self.rotation = Rotation(config: config)
         self.phaseEnteredAt = now
