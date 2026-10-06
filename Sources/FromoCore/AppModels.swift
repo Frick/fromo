@@ -16,6 +16,7 @@ public struct MenuModel: Sendable {
     public var lunch: MenuAction
     public var notToday: MenuAction
     public var settings: MenuAction
+    public var endDay: MenuAction
 
     public init(state: State, config: Config, now: Int, settingsAvailable: Bool = false) {
         var calendar = Calendar(identifier: .gregorian)
@@ -48,6 +49,8 @@ public struct MenuModel: Sendable {
         ]
         lunch = action(state.phase == .lunch ? "End Lunch" : "Lunch (\(config.timer.lunchMinutes) min)", state.phase == .lunch ? .endLunch : .lunch(nil))
         notToday = action("Not Today", .notToday(state.nagsOffUntil == nil), checked: state.nagsOffUntil != nil)
+        endDay = action("End Day", .endDay)
+        endDay.enabled = state.phase != .stopped && !(state.phase == .ready && state.dayClosedAt != nil)
         settings = action("Settings…", .settings)
         settings.enabled = settingsAvailable
     }

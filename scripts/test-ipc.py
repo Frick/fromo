@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix="fromo-") as root:
     config_path = Path(root) / "c/fromo/config.toml"
     socket_path = str(Path(root) / "s/fromo/fromo.sock")
     for command in ["start", "break", "pause", "resume", "toggle", "next", "restart", "extend", "end-break",
-                    "reset", "lunch", "not-today", "answer", "status", "stats", "config", "settings", "engine"]:
+                    "reset", "lunch", "not-today", "end-day", "answer", "status", "stats", "config", "settings", "engine"]:
         run(env, command, "--help")
     assert run(env, "status").strip() == "not running"
     assert json.loads(run(env, "status", "--json")) == {"running": False}
@@ -107,7 +107,10 @@ with tempfile.TemporaryDirectory(prefix="fromo-") as root:
         run(env, "not-today", "--off")
         run(env, "settings", code=1)
         run(env, "answer", "--did", code=1)
+        run(env, "end-day")
+        assert json.loads(run(env, "status", "--json"))["day_closed_at"] == NOW
         run(env, "start")
+        assert json.loads(run(env, "status", "--json"))["day_closed_at"] is None
     finally:
         stop(process)
     stopped = json.loads(state_path.read_text())

@@ -36,6 +36,7 @@ with tempfile.TemporaryDirectory(prefix="fromo-stats-") as root:
             ["2026-09-28T11:00:00Z", "2026-09-28T11:05:00Z", "work", 1500, "abandoned", "", ""],
             ["2026-09-28T09:30:00Z", "2026-09-28T09:35:00Z", "short_break", 300, "did_suggested", 'Task, "A"', 'Task, "A"'],
             ["2026-09-28T10:25:00Z", "2026-09-28T10:30:00Z", "short_break", 300, "did_other", "B", "Other"],
+            ["2026-09-28T14:00:00Z", "2026-09-28T14:15:00Z", "long_break", 900, "unanswered", "Unanswered task", ""],
             ["2026-09-28T12:00:00Z", "2026-09-28T12:05:00Z", "unknown", 300, "unknown", "", ""],
             ["malformed"],
         ])
@@ -45,6 +46,7 @@ with tempfile.TemporaryDirectory(prefix="fromo-stats-") as root:
     assert report["completed"] == 2 and report["abandoned"] == 1
     assert report["focus_seconds"] == 3300 and report["goal_met_days"] == 1
     assert report["compliance_percent"] == 50 and report["short_breaks"] == 2
+    assert report["long_breaks"] == 1 and report["unanswered_breaks"] == 1 and report["answered_breaks"] == 2
     assert report["skipped_rows"] == 2 and len(result.stderr.splitlines()) == 1
     assert report["tasks"][1]["name"] == 'Task, "A"'
     assert [day["completed"] for day in report["days"]] == [2, 0, 0]

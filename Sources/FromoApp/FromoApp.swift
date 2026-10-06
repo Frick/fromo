@@ -158,6 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.addItem(.separator())
         add(model.lunch, to: menu)
         add(model.notToday, to: menu)
+        add(model.endDay, to: menu)
         menu.addItem(.separator())
         add(model.settings, to: menu, key: ",")
         let logs = NSMenuItem(title: "Open Log Folder", action: #selector(openLogs), keyEquivalent: "")

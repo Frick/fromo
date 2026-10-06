@@ -58,6 +58,7 @@ public struct IPCRequest: Codable, Sendable {
             guard (args?.did == true) != (args?.other != nil) else { throw IPCError("Choose either did or other.") }
             return .answer(args?.did == true ? .didSuggested : .other(args!.other!), startNext: args?.startNext ?? true)
         case "settings": return .settings
+        case "end_day": return .endDay
         default: throw IPCError("Unknown command: \(cmd).")
         }
     }

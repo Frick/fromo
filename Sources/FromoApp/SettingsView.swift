@@ -31,6 +31,7 @@ struct SettingsView: View {
                 Button("Open Login Items") { model.openLoginItems() }
             }
             NumberSetting("Daily goal", value: model.binding(\.timer.dailyGoal), minimum: 0)
+            NumberSetting("After-hours idle to end day (minutes)", value: model.binding(\.general.dayEndIdleMinutes))
         }.formStyle(.grouped)
     }
 
