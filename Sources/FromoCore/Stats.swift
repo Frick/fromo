@@ -85,6 +85,7 @@ public struct StatsReport: Codable, Sendable {
     public var shortBreaks = 0
     public var longBreaks = 0
     public var answeredBreaks = 0
+    public var unansweredBreaks = 0
     public var didSuggested = 0
     public var compliancePercent = 0.0
     public var tasks: [TaskStats] = []
@@ -103,7 +104,7 @@ public struct StatsReport: Codable, Sendable {
         func name(_ text: String) -> String { text.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ") }
         var lines = [title,
                      "Pomodoros   \(completed) completed, \(abandoned) abandoned   \(focusSeconds / 3_600)h\((focusSeconds % 3_600) / 60)m focus   goal met \(goalMetDays)/\(days.count) days",
-                     "Breaks      \(shortBreaks) short, \(longBreaks) long   compliance \(Int(compliancePercent.rounded()))%",
+                     "Breaks      \(shortBreaks) short, \(longBreaks) long   compliance \(Int(compliancePercent.rounded()))%   \(unansweredBreaks) unanswered",
                      "Tasks       " + (tasks.isEmpty ? "none" : tasks.map { "\(name($0.name)) \($0.done)/\($0.suggested)" }.joined(separator: "   ")),
                      "Other       " + (other.isEmpty ? "none" : other.map { "\(name($0.name)) \($0.count)" }.joined(separator: "   "))]
         if period.kind == .week || period.kind == .month {
@@ -142,8 +143,10 @@ public enum Stats {
                     report.completed += 1; completed += 1
                 case ("work", "abandoned"): report.abandoned += 1
                 case ("short_break", "did_suggested"), ("short_break", "did_other"),
-                     ("long_break", "did_suggested"), ("long_break", "did_other"):
-                    report.answeredBreaks += 1
+                     ("long_break", "did_suggested"), ("long_break", "did_other"),
+                     ("short_break", "unanswered"), ("long_break", "unanswered"):
+                    if fields[4] == "unanswered" { report.unansweredBreaks += 1 }
+                    else { report.answeredBreaks += 1 }
                     if fields[2] == "short_break" { report.shortBreaks += 1 } else { report.longBreaks += 1 }
                     if fields[4] == "did_suggested" { report.didSuggested += 1 }
                     if !fields[5].isEmpty {

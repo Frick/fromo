@@ -27,7 +27,7 @@ public enum Command: Equatable, Sendable {
     case start, startBreak, pause, resume, toggle, next, restart, reset, endBreak
     case extend(Int?), lunch(Int?), endLunch, notToday(Bool)
     case answer(Answer, startNext: Bool)
-    case reloadConfig, settings, stop
+    case reloadConfig, settings, stop, endDay
     case openConfig, previewSound(String), testSketchyBar
 }
 
@@ -71,6 +71,10 @@ public struct Engine: Sendable {
         state.rotation.short.reconcile(env.config.breaks.short)
         state.rotation.long.reconcile(env.config.breaks.long)
         state.dailyGoal = env.config.timer.dailyGoal
+        if state.workdayDate == nil {
+            state.workdayDate = WorkdayPolicy.trackedDay(state: state, calendar: env.calendar)
+            state.dayOpenedAt = state.startedAt ?? state.phaseEnteredAt
+        }
         state.updateNextTask(config: env.config)
         if let pid { state.pid = pid }
         if state != original || recovered { effects += changed(at: env.now) }
@@ -88,6 +92,7 @@ public struct Engine: Sendable {
     public mutating func tick(env: Environment) -> [Effect] {
         let previousPhase = state.phase
         var effects: [Effect] = []
+        var meetingEnded = false
         if lastSuppressedAt == nil || state.inMeeting { lastSuppressedAt = env.now }
         let detected = (env.config.meetings.camera && env.cameraInUse)
             || (env.config.meetings.microphone && env.micInUse)
@@ -103,7 +108,7 @@ public struct Engine: Sendable {
                 if env.now - quietSince >= 30 {
                     state.inMeeting = false
                     meetingQuietSince = nil
-                    if state.phase == .breakDone { effects.append(.showAnswerPanel) }
+                    meetingEnded = true
                     effects += changed(at: env.now)
                 }
             } else { meetingQuietSince = env.now }
@@ -117,12 +122,17 @@ public struct Engine: Sendable {
             state.updateNextTask(config: env.config)
             effects += changed(at: env.now)
         }
+        if let close = WorkdayPolicy.evaluate(state: state, env: env) {
+            effects += closeDay(at: close.at, workday: close.workday, reopen: close.reason == .nextWorkday, env: env)
+            return effects
+        }
+        if meetingEnded && state.phase == .breakDone { effects.append(.showAnswerPanel) }
         switch state.phase {
         case .work where (state.endsAt ?? Int.max) <= env.now:
             let deadline = state.endsAt!
             effects.append(.appendLog(row(kind: "work", outcome: "completed", end: deadline)))
             state.phase = .workDone
-            state.completedToday += 1
+            if State.localDate(deadline, calendar: env.calendar) == state.date { state.completedToday += 1 }
             state.cycleCount += 1
             state.endsAt = nil
             state.endedAt = deadline
@@ -156,13 +166,15 @@ public struct Engine: Sendable {
         return EngineDebug(phase: state.phase, idleSeconds: env.idleSeconds, cameraInUse: env.cameraInUse,
                            microphoneInUse: env.micInUse, inMeeting: state.inMeeting,
                            inWorkHours: NagPolicy.inWorkHours(env: env), nagEligible: nag.eligible, nagDue: nag.due,
-                           nextNagAt: nag.nextNagAt, lastSuppressedAt: lastSuppressedAt, reasons: nag.reasons)
+                           nextNagAt: nag.nextNagAt, lastSuppressedAt: lastSuppressedAt, reasons: nag.reasons,
+                           workdayDate: state.workdayDate, dayClosedAt: state.dayClosedAt,
+                           dayEndIdleMinutes: env.config.general.dayEndIdleMinutes)
     }
 
     public mutating func handle(_ cmd: Command, env: Environment) throws -> [Effect] {
         var candidate = self
         var effects = try candidate.apply(cmd, env: env)
-        if candidate.state.phase != state.phase { effects.insert(.clearNotifications, at: 0) }
+        if candidate.state.phase != state.phase && !effects.contains(.clearNotifications) { effects.insert(.clearNotifications, at: 0) }
         self = candidate
         return effects
     }
@@ -173,7 +185,13 @@ public struct Engine: Sendable {
         var effects: [Effect] = []
         switch cmd {
         case .start where state.phase == .ready:
+            state.workdayDate = State.localDate(now, calendar: env.calendar)
+            state.dayOpenedAt = now
+            state.dayClosedAt = nil
             try begin(.work, duration: config.timer.workMinutes * 60, now: now)
+        case .endDay where state.phase != .stopped:
+            if state.phase == .ready && state.dayClosedAt != nil { return [] }
+            return closeDay(at: now, workday: WorkdayPolicy.trackedDay(state: state, calendar: env.calendar), reopen: false, env: env)
         case .startBreak where state.phase == .workDone:
             let kind: BreakKind = state.cycleCount >= config.timer.longBreakEvery ? .long : .short
             state.breakKind = kind
@@ -363,6 +381,50 @@ public struct Engine: Sendable {
     private func row(kind: String, outcome: String, end: Int, suggested: String? = nil, actual: String? = nil) -> LogRow {
         LogRow(start: state.startedAt!, end: end, kind: kind, plannedSeconds: state.plannedSeconds!,
                outcome: outcome, suggested: suggested, actual: actual)
+    }
+
+    private mutating func closeDay(at cutoff: Int, workday: String, reopen: Bool, env: Environment) -> [Effect] {
+        var effects: [Effect] = [.clearNotifications, .hideAnswerPanel]
+        let today = State.localDate(env.now, calendar: env.calendar)
+        if state.date != today { state.date = today; state.completedToday = 0; state.nagsOffUntil = nil }
+        var active = state.phase
+        var paused = state.phase == .paused
+        if let lunch = state.lunch {
+            let start = state.phaseEnteredAt
+            let end = max(start, min(cutoff, lunch.endsAt))
+            effects.append(.appendLog(LogRow(start: start, end: end, kind: "lunch", plannedSeconds: lunch.endsAt - start,
+                                             outcome: lunch.endsAt <= cutoff ? "completed" : "ended_early")))
+            active = lunch.returnPhase
+            paused = [.work, .break, .paused].contains(active)
+        }
+        if active == .paused { active = state.pausedPhase ?? .ready; paused = true }
+        if let start = state.startedAt, let planned = state.plannedSeconds {
+            if active == .work {
+                let completed = !paused && (state.endsAt ?? Int.max) <= cutoff
+                let end = max(start, completed ? state.endsAt! : cutoff)
+                effects.append(.appendLog(LogRow(start: start, end: end, kind: "work", plannedSeconds: planned,
+                                                 outcome: completed ? "completed" : "abandoned")))
+                if completed && State.localDate(end, calendar: env.calendar) == today { state.completedToday += 1 }
+            } else if active == .break || active == .breakDone {
+                let ended = state.endedAt ?? (paused ? cutoff : min(state.endsAt ?? cutoff, cutoff))
+                effects.append(.appendLog(LogRow(start: start, end: max(start, ended), kind: state.breakKind == .long ? "long_break" : "short_break",
+                                                 plannedSeconds: planned, outcome: "unanswered", suggested: state.task)))
+            }
+        }
+        clearCountdown()
+        state.lunch = nil
+        state.stoppedPhase = nil
+        state.phase = .ready
+        state.phaseEnteredAt = env.now
+        state.cycleCount = 0
+        state.lastNagAt = nil
+        state.workdayDate = workday
+        state.dayClosedAt = reopen ? nil : cutoff
+        if reopen { state.dayOpenedAt = env.now }
+        lastSuppressedAt = env.now
+        state.updateNextTask(config: env.config)
+        effects += changed(at: env.now)
+        return effects
     }
 
     private mutating func changed(at now: Int) -> [Effect] {

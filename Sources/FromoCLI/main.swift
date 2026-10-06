@@ -38,7 +38,7 @@ struct Fromo: ParsableCommand {
         subcommands: [Start.self, StartBreak.self, Pause.self, Resume.self, Toggle.self, Next.self,
                       Restart.self, Extend.self, EndBreak.self, Reset.self, Lunch.self, NotToday.self,
                       AnswerCommand.self, Status.self, StatsCommand.self, ConfigCommand.self,
-                      Settings.self, Headless.self]
+                      Settings.self, EndDay.self, Headless.self]
     )
 
     static func main() {
@@ -72,6 +72,7 @@ struct Restart: SimpleControl { static let verb = "restart" }
 struct EndBreak: SimpleControl { static let verb = "end_break" }
 struct Reset: SimpleControl { static let verb = "reset" }
 struct Settings: SimpleControl { static let verb = "settings" }
+struct EndDay: SimpleControl { static let verb = "end_day" }
 
 struct Extend: ParsableCommand {
     @Argument(help: "Minutes to add; defaults to timer.extend_minutes.") var minutes: Int?

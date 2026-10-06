@@ -101,3 +101,16 @@ macOS CI. This final check is against the owner's local data; logs stay on the M
 
 1. Install with `sh scripts/install.sh`, then run `fromo stats --week` against a week of accumulated logs. Expected: the report shows completed/abandoned Pomodoros, completed planned focus time including extensions, short/long breaks, suggestion compliance, task/other counts and one completed/goal line per day; missing days show zero.
 2. Run `fromo stats --week --json` and compare its totals with the text report and local CSV rows. Expected: the totals agree, and the currently configured daily goal is applied to every day. Text compliance is rounded to whole percent; JSON retains the numeric percentage.
+
+# Workday reset (`v0.7.0`)
+
+Injected-clock tests cover thresholds, meetings, accounting, old-state migration,
+restarts, weekends and DST. These checks cover the native controls and actual idle
+sampling. Keep the original General/work-hours/timer values to restore afterward.
+
+1. Install with `sh scripts/install.sh`. Start work, pause it, then choose End Day from the menu. Expected: status says Day done, the countdown disappears, paused/lunch/overtime state is cleared, and nags stop. Today's completed count and task rotation stay unchanged; unfinished work has an abandoned CSV row.
+2. Start work explicitly using the menu or `fromo start`. Expected: the day reopens immediately and a fresh countdown runs, including after hours. `fromo end-day` closes it again; the menu disables End Day while already closed.
+3. Temporarily use one-minute work/break durations. Complete work, start its break and end it so the answer panel is visible, then run `fromo end-day`. Expected: the panel hides, ready/day-done is restored, and the break has an unanswered row with empty actual task. `fromo stats --today --json` reports it separately and excludes it from answered-break compliance; its suggestion repeats next time.
+4. Set After-hours idle to end day to one minute, and set today's work-hours end a few minutes before the current time. Reopen work and then pause it. Stay active briefly: expected, no automatic close. Leave the Mac untouched for more than one minute: expected, the day closes automatically without phase-end sounds or stale prompts. If a camera meeting is active, expected, idle closure waits until the meeting ends.
+5. Leave a timer/awaiting phase from one workday and wake or reopen Fromo at or after the next configured workday's start. Expected: stale timer/overtime/panel state is cleared before normal expiry handling, the cycle starts fresh, yesterday's completion is not counted as today, and the app waits for an explicit Start Work.
+6. Restore the original settings, including the default 60-minute day-end idle threshold if desired. Expected: subsequent closure uses those values. No log history or rotation is erased.

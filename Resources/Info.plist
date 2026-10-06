@@ -7,8 +7,8 @@
     <key>CFBundleDisplayName</key><string>Fromo</string>
     <key>CFBundleExecutable</key><string>FromoApp</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.6.0</string>
-    <key>CFBundleVersion</key><string>10</string>
+    <key>CFBundleShortVersionString</key><string>0.7.0</string>
+    <key>CFBundleVersion</key><string>11</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>FromoBuildVersion</key><string>BUILD_VERSION</string>

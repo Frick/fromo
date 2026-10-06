@@ -67,8 +67,30 @@ You can pause/resume, restart or extend a running countdown. Abandon Session
 and answering. **Lunch** temporarily suspends the current phase; running work or
 break time returns paused. **Not Today** disables nags until local midnight.
 
-Countdowns use stored wall-clock deadlines and survive sleep or app restarts. An
-expired countdown enters its waiting phase when the app next runs.
+### Between workdays
+
+Fromo closes the day after both **60 minutes past its configured work-hours end**
+and **60 minutes of continuous idle**, provided no meeting is active. Change the
+threshold in Settings → General or `general.day_end_idle_minutes`.
+
+Closing returns the timer to ready, clears countdown/overtime and lunch/paused
+state, hides the answer panel and resets the long-break cycle. Today's completed
+count, logs and task rotation are retained. Closed days do not nag. Choose
+**End Day** from the menu or run `fromo end-day` to close immediately; explicitly
+starting work reopens the day, including after hours.
+
+At the start of a later configured workday, stale state from an earlier day is
+cleared before countdown expiry handling. This backstop covers sleep, relaunch and
+weekends; days marked off do not introduce a new workday boundary. Work explicitly
+started early on the new day is retained.
+
+Unfinished work is logged as abandoned. Work that expired before the close boundary
+keeps its completed row and original deadline. A cleared break is logged as
+`unanswered`, with no invented actual task and no rotation advance. Stats include
+those breaks in short/long totals, but exclude them from answered-break compliance.
+
+Countdowns use stored wall-clock deadlines and survive sleep or app restarts. Within
+an open workday, an expired countdown enters its waiting phase when the app next runs.
 
 ## CLI
 
@@ -106,6 +128,7 @@ be quoted. Commands unavailable in the current phase are rejected with a reason.
 | `fromo answer OTHER [--no-start]` | Choose a configured Other answer |
 | `fromo lunch [MIN]` / `fromo lunch --end` | Start lunch (default: 60 minutes) / end it early |
 | `fromo not-today [--off]` | Disable nags until midnight / enable them again |
+| `fromo end-day` | Close the workday and clear its timer state |
 | `fromo status [--json]` | Show current state |
 | `fromo status --debug [--json]` | Show idle/device probes and nag eligibility |
 | `fromo config path` / `fromo config validate` | Locate or validate the TOML file |
@@ -150,6 +173,7 @@ Some defaults worth knowing:
 - Daily goal: **8**; work hours: **Monday–Friday, 09:00–18:00 local time**.
 - Nags: **every 10 minutes** while ready, waiting or paused during work hours, suppressed after **5 minutes idle**.
 - Meeting detection: **camera on, microphone off**; sounds muted during meetings.
+- Day closure: **60 minutes past work-hours end and idle**, with a next-workday cleanup backstop.
 
 For example, a partial config can change the tasks and disable nags:
 
